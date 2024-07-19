@@ -270,11 +270,12 @@ minus =
 
 minusSymbols : Core.Parser ()
 minusSymbols =
-    Core.oneOf
-        [ Core.symbol "- "
-        , Core.symbol "-\n"
-        , Core.symbol "-\u{000D}"
-        ]
+    Core.symbol "-"
+        |. Core.oneOf
+            [ Core.symbol " "
+            , Core.symbol "\n"
+            , Core.symbol "\u{000D}"
+            ]
 
 
 dot : Core.Parser ()

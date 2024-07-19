@@ -8,7 +8,7 @@ import Elm.Parser.Tokens as Tokens
 import Elm.Parser.TypeAnnotation exposing (typeAnnotation, typeAnnotationNonGreedy)
 import Elm.Syntax.Declaration as Declaration
 import Elm.Syntax.Documentation exposing (Documentation)
-import Elm.Syntax.Node as Node exposing (Node(..))
+import Elm.Syntax.Node exposing (Node(..))
 import Elm.Syntax.Range exposing (Location, Range)
 import Elm.Syntax.Type exposing (ValueConstructor)
 import Elm.Syntax.TypeAnnotation exposing (TypeAnnotation)

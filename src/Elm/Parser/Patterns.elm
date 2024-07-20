@@ -8,7 +8,7 @@ import Elm.Parser.Numbers
 import Elm.Parser.State exposing (State)
 import Elm.Parser.Tokens as Tokens
 import Elm.Syntax.Node as Node exposing (Node(..))
-import Elm.Syntax.Pattern exposing (Pattern(..), QualifiedNameRef)
+import Elm.Syntax.Pattern exposing (Pattern(..))
 import Parser as Core
 
 

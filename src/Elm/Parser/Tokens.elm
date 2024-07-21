@@ -210,7 +210,7 @@ multiLineStringLiteralStep stringSoFar =
 functionName : Core.Parser String
 functionName =
     Core.variable
-        { start = \c -> Char.isLower c || Unicode.isLower c
+        { start = Unicode.isLower
         , inner =
             \c ->
                 -- checking for Char.isAlphaNum early is much faster
@@ -222,7 +222,7 @@ functionName =
 typeName : Core.Parser String
 typeName =
     Core.variable
-        { start = \c -> Char.isUpper c || Unicode.isLower c
+        { start = Unicode.isUpper
         , inner =
             \c ->
                 -- checking for Char.isAlphaNum early is much faster

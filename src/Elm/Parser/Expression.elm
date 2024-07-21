@@ -148,8 +148,7 @@ glslExpression =
         (\s () -> s |> String.dropLeft (String.length start) |> GLSLExpression)
         (Core.multiComment start end NotNestable)
         |. Core.symbol end
-        |> Node.parserCore
-        |> Combine.fromCore
+        |> Node.parserFromCore
 
 
 listExpression : Parser State (Node Expression)
@@ -173,8 +172,7 @@ recordExpression =
         |> Combine.continueWith
             (Combine.oneOf
                 [ Tokens.curlyEnd
-                    |> Core.map (\() -> RecordExpr [])
-                    |> Combine.fromCore
+                    |> Combine.fromCoreMap (\() -> RecordExpr [])
                 , recordContents
                 ]
             )
@@ -189,8 +187,8 @@ recordContents =
             (\fname ->
                 Combine.oneOf
                     [ recordUpdateSyntaxParser fname
-                    , Combine.fromCore Tokens.equal
-                        |> Combine.continueWith expression
+                    , Tokens.equal
+                        |> Combine.continueWithFromCore expression
                         |> Combine.andThen
                             (\e ->
                                 let
@@ -204,8 +202,7 @@ recordContents =
                                 in
                                 Combine.oneOf
                                     [ Tokens.curlyEnd
-                                        |> Core.map (\() -> toRecordExpr [])
-                                        |> Combine.fromCore
+                                        |> Combine.fromCoreMap (\() -> toRecordExpr [])
                                     , Combine.succeed toRecordExpr
                                         |> Combine.ignoreEntirely Tokens.comma
                                         |> Combine.ignore (Combine.maybeIgnore Layout.layout)
@@ -233,8 +230,8 @@ recordFields =
         |> Combine.ignore (Combine.maybeIgnore Layout.layout)
         |> Combine.keep
             (Combine.many
-                (Combine.fromCore Tokens.comma
-                    |> Combine.ignore (Combine.maybeIgnore Layout.layout)
+                (Tokens.comma
+                    |> Combine.ignoreFromCore (Combine.maybeIgnore Layout.layout)
                     |> Combine.continueWith recordField
                     |> Combine.ignore (Combine.maybeIgnore Layout.layout)
                 )
@@ -263,16 +260,14 @@ literalExpression =
         , Tokens.stringLiteral
         ]
         |> Core.map Literal
-        |> Node.parserCore
-        |> Combine.fromCore
+        |> Node.parserFromCore
 
 
 charLiteralExpression : Parser State (Node Expression)
 charLiteralExpression =
     Tokens.characterLiteral
         |> Core.map CharLiteral
-        |> Node.parserCore
-        |> Combine.fromCore
+        |> Node.parserFromCore
 
 
 
@@ -394,8 +389,7 @@ letDestructuringDeclarationWithPattern ((Node { start } _) as pattern) =
 
 numberExpression : Parser State (Node Expression)
 numberExpression =
-    Node.parserCore (Elm.Parser.Numbers.forgivingNumber Floatable Integer Hex)
-        |> Combine.fromCore
+    Node.parserFromCore (Elm.Parser.Numbers.forgivingNumber Floatable Integer Hex)
 
 
 ifBlockExpression : Parser State (Node Expression)
@@ -479,8 +473,7 @@ referenceExpression =
         , Tokens.functionName
             |> Core.map (\v -> FunctionOrValue [] v)
         ]
-        |> Node.parserCore
-        |> Combine.fromCore
+        |> Node.parserFromCore
 
 
 recordAccessFunctionExpression : Parser State (Node Expression)
@@ -510,7 +503,7 @@ tupledExpression =
     Tokens.parensStart
         |> Combine.continueFromCore
             (Combine.oneOf
-                [ Tokens.parensEnd |> Core.map (always UnitExpr) |> Combine.fromCore
+                [ Tokens.parensEnd |> Combine.fromCoreMap (\() -> UnitExpr)
                 , closingPrefixOperator
                 , nested |> Combine.ignoreEntirely Tokens.parensEnd
                 ]
@@ -523,8 +516,7 @@ closingPrefixOperator =
     Core.backtrackable Tokens.prefixOperatorToken
         |. Tokens.parensEnd
         |. Core.commit ()
-        |> Core.map PrefixOperator
-        |> Combine.fromCore
+        |> Combine.fromCoreMap PrefixOperator
 
 
 asExpression : Node Expression -> List (Node Expression) -> Expression

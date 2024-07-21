@@ -137,8 +137,7 @@ operatorWithParens =
         |. Tokens.parensStart
         |= Tokens.prefixOperatorToken
         |. Tokens.parensEnd
-        |> Node.parserCore
-        |> Combine.fromCore
+        |> Node.parserFromCore
 
 
 infixDirection : Parser State (Node Infix.InfixDirection)
@@ -151,8 +150,7 @@ infixDirection =
         , Core.keyword "non"
             |> Core.map (\() -> Infix.Non)
         ]
-        |> Node.parserCore
-        |> Combine.fromCore
+        |> Node.parserFromCore
 
 
 portDeclaration : Maybe (Node Documentation) -> Parser State (Node Declaration)

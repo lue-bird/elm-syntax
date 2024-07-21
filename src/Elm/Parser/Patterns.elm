@@ -124,15 +124,13 @@ qualifiedPatternArg =
 
 allPattern : Parser state (Node Pattern)
 allPattern =
-    Core.succeed AllPattern
-        |. Core.symbol "_"
+    Core.map (\() -> AllPattern) (Core.symbol "_")
         |> Node.parserFromCore
 
 
 unitPattern : Parser state (Node Pattern)
 unitPattern =
-    Core.succeed UnitPattern
-        |. Core.symbol "()"
+    Core.map (\() -> UnitPattern) (Core.symbol "()")
         |> Node.parserFromCore
 
 

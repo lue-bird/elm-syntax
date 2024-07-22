@@ -1,5 +1,6 @@
 module Elm.Parser.TypingsTests exposing (all)
 
+import Combine
 import Elm.Parser.CombineTestUtil as CombineTestUtil exposing (..)
 import Elm.Parser.Typings as Parser
 import Elm.Syntax.Declaration as Declaration exposing (Declaration(..))
@@ -7,6 +8,7 @@ import Elm.Syntax.Documentation exposing (Documentation)
 import Elm.Syntax.Node exposing (Node(..))
 import Elm.Syntax.TypeAnnotation exposing (..)
 import Expect
+import Parser as Core
 import Test exposing (..)
 
 
@@ -230,7 +232,7 @@ all =
                         )
         , test "type with value on next line " <|
             \() ->
-                parse "type Maybe a = Just a |\nNothing" (Parser.typeDefinition Nothing)
+                parse "type Maybe a = Just a |\nNothing" Parser.typeDefinitionWithoutDocumentation
                     |> Expect.equal Nothing
         , test "type with spacing after " <|
             \() ->
@@ -253,14 +255,23 @@ all =
 
 expectAst : Node Declaration -> String -> Expect.Expectation
 expectAst =
-    CombineTestUtil.expectAst (Parser.typeDefinition Nothing)
+    CombineTestUtil.expectAst
+        (Combine.fromCoreMap
+            (\( rangeStartRow, rangeStartColumn ) ->
+                \decl ->
+                    Node { start = { row = rangeStartRow, column = rangeStartColumn }, end = decl.rangeEnd }
+                        decl.declaration
+            )
+            Core.getPosition
+            |> Combine.keep Parser.typeDefinitionWithoutDocumentation
+        )
 
 
 expectAstWithDocs : Node Documentation -> Node Declaration -> String -> Expect.Expectation
 expectAstWithDocs documentation =
-    CombineTestUtil.expectAst (Parser.typeDefinition (Just documentation))
+    CombineTestUtil.expectAst (Parser.typeDefinitionWithDocumentation documentation)
 
 
 expectInvalid : String -> Expect.Expectation
 expectInvalid =
-    CombineTestUtil.expectInvalid (Parser.typeDefinition Nothing)
+    CombineTestUtil.expectInvalid Parser.typeDefinitionWithoutDocumentation

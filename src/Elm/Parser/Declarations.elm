@@ -9,42 +9,98 @@ import Elm.Parser.Patterns exposing (pattern)
 import Elm.Parser.State as State exposing (State)
 import Elm.Parser.Tokens as Tokens
 import Elm.Parser.TypeAnnotation exposing (typeAnnotation)
-import Elm.Parser.Typings exposing (typeDefinition)
+import Elm.Parser.Typings exposing (typeDefinitionWithoutDocumentation)
 import Elm.Syntax.Declaration as Declaration exposing (Declaration)
-import Elm.Syntax.Documentation exposing (Documentation)
 import Elm.Syntax.Expression exposing (Function, FunctionImplementation)
 import Elm.Syntax.Infix as Infix
 import Elm.Syntax.Node as Node exposing (Node(..))
-import Elm.Syntax.Range exposing (Location)
+import Elm.Syntax.Range as Range exposing (Location)
 import Elm.Syntax.Signature exposing (Signature)
+import Elm.Syntax.TypeAnnotation as TypeAnnotation
 import Parser as Core exposing ((|.), (|=))
 
 
 declaration : Parser State (Node Declaration)
 declaration =
     Combine.oneOf
-        [ infixDeclaration
-        , maybeDocumentation
-            |> Combine.andThen
-                (\maybeDoc ->
-                    Combine.oneOf
-                        [ function maybeDoc
-                        , typeDefinition maybeDoc
-                        , portDeclaration maybeDoc
-                        ]
+        [ Combine.succeed
+            (\documentation ->
+                \decl ->
+                    case decl.declaration of
+                        Declaration.FunctionDeclaration functionDecl ->
+                            Combine.succeed
+                                (Node { start = (Node.range documentation).start, end = decl.rangeEnd }
+                                    (Declaration.FunctionDeclaration { functionDecl | documentation = Just documentation })
+                                )
+
+                        Declaration.AliasDeclaration typeAliasDecl ->
+                            Combine.succeed
+                                (Node { start = (Node.range documentation).start, end = decl.rangeEnd }
+                                    (Declaration.AliasDeclaration { typeAliasDecl | documentation = Just documentation })
+                                )
+
+                        Declaration.CustomTypeDeclaration customTypeDecl ->
+                            Combine.succeed
+                                (Node { start = (Node.range documentation).start, end = decl.rangeEnd }
+                                    (Declaration.CustomTypeDeclaration { customTypeDecl | documentation = Just documentation })
+                                )
+
+                        Declaration.PortDeclaration _ ->
+                            Core.map
+                                (\( startRow, startColumn ) ->
+                                    \sig ->
+                                        Node { start = { row = startRow, column = startColumn }, end = (Node.range sig.typeAnnotation).end }
+                                            (Declaration.PortDeclaration sig)
+                                )
+                                Core.getPosition
+                                |> Combine.ignoreFromCore (Combine.modifyState (State.addComment documentation))
+                                |> Combine.ignoreEntirely Tokens.portToken
+                                |> Combine.ignore Layout.layout
+                                |> Combine.keep signature
+
+                        Declaration.InfixDeclaration _ ->
+                            Combine.succeed (Node { start = (Node.range documentation).start, end = decl.rangeEnd } decl.declaration)
+
+                        Declaration.Destructuring _ _ ->
+                            Combine.succeed (Node { start = (Node.range documentation).start, end = decl.rangeEnd } decl.declaration)
+            )
+            |> Combine.keepFromCore Comments.declarationDocumentation
+            |> Combine.ignore Layout.layoutStrict
+            |> Combine.keep
+                (Combine.oneOf
+                    [ functionWithoutDocumentation
+                    , typeDefinitionWithoutDocumentation
+                    , Combine.succeedLazy
+                        (\() ->
+                            { rangeEnd = Range.empty.end
+                            , declaration =
+                                Declaration.PortDeclaration
+                                    { name = Node.empty "", typeAnnotation = Node.empty TypeAnnotation.Unit }
+                            }
+                        )
+                    ]
+                )
+            |> Combine.andThen identity
+        , infixDeclaration
+        , Combine.fromCoreMap
+            (\( rangeStartRow, rangeStartColumn ) ->
+                \decl ->
+                    Node { start = { row = rangeStartRow, column = rangeStartColumn }, end = decl.rangeEnd }
+                        decl.declaration
+            )
+            Core.getPosition
+            |> Combine.keep
+                (Combine.oneOf
+                    [ functionWithoutDocumentation
+                    , typeDefinitionWithoutDocumentation
+                    , portDeclarationWithoutDocumentation
+                    ]
                 )
         ]
 
 
-maybeDocumentation : Parser State (Maybe (Node Documentation))
-maybeDocumentation =
-    Comments.declarationDocumentation
-        |> Combine.ignoreFromCore Layout.layoutStrict
-        |> Combine.maybe
-
-
-function : Maybe (Node Documentation) -> Parser State (Node Declaration)
-function maybeDoc =
+functionWithoutDocumentation : Parser State { rangeEnd : Location, declaration : Declaration }
+functionWithoutDocumentation =
     Node.parserCore Tokens.functionName
         |> Combine.ignoreFromCore (Combine.maybeIgnore Layout.layout)
         |> Combine.andThen functionWithNameNode
@@ -59,23 +115,9 @@ function maybeDoc =
                     expressionRangeEnd =
                         (Node.range functionImplementation.expression).end
                 in
-                case maybeDoc of
-                    Just (Node documentationRange _) ->
-                        Node { start = documentationRange.start, end = expressionRangeEnd } (Declaration.FunctionDeclaration { f | documentation = maybeDoc })
-
-                    Nothing ->
-                        let
-                            rangeStart : Location
-                            rangeStart =
-                                case f.signature of
-                                    Just (Node _ sig) ->
-                                        (Node.range sig.name).start
-
-                                    Nothing ->
-                                        (Node.range functionImplementation.name).start
-                        in
-                        Node { start = rangeStart, end = expressionRangeEnd }
-                            (Declaration.FunctionDeclaration f)
+                { rangeEnd = expressionRangeEnd
+                , declaration = Declaration.FunctionDeclaration f
+                }
             )
 
 
@@ -177,26 +219,14 @@ infixDirection =
         |> Node.parserFromCore
 
 
-portDeclaration : Maybe (Node Documentation) -> Parser State (Node Declaration)
-portDeclaration maybeDoc =
+portDeclarationWithoutDocumentation : Parser State { rangeEnd : Location, declaration : Declaration }
+portDeclarationWithoutDocumentation =
     Combine.succeed
-        (\( startRow, startColumn ) ->
-            \sig ->
-                Node
-                    { start = { row = startRow, column = startColumn }
-                    , end = (Node.range sig.typeAnnotation).end
-                    }
-                    (Declaration.PortDeclaration sig)
+        (\sig ->
+            { rangeEnd = (Node.range sig.typeAnnotation).end
+            , declaration = Declaration.PortDeclaration sig
+            }
         )
-        |> Combine.ignore
-            (case maybeDoc of
-                Nothing ->
-                    Combine.succeed ()
-
-                Just doc ->
-                    Combine.modifyState (State.addComment doc)
-            )
-        |> Combine.keepFromCore Core.getPosition
         |> Combine.ignoreEntirely Tokens.portToken
         |> Combine.ignore Layout.layout
         |> Combine.keep signature

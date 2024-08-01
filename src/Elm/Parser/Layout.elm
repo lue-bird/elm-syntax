@@ -15,6 +15,7 @@ module Elm.Parser.Layout exposing
 
 import Elm.Parser.Comments as Comments
 import Elm.Parser.Node as Node
+import Elm.Syntax.Node exposing (Node(..))
 import Parser exposing ((|.), (|=), Parser)
 import ParserWithComments exposing (Comments, WithComments)
 import Rope
@@ -33,11 +34,22 @@ maybeLayoutUntilIgnored end =
         fromSingleLineCommentUntilEnd : Parser Comments
         fromSingleLineCommentUntilEnd =
             Parser.map
-                (\comment ->
-                    \commentsAfter ->
-                        Rope.one comment |> Rope.filledPrependTo commentsAfter
+                (\( startRow, startColumn ) ->
+                    \comment ->
+                        \endColumn ->
+                            \commentsAfter ->
+                                Rope.one
+                                    (Node
+                                        { start = { row = startRow, column = startColumn }
+                                        , end = { row = startRow, column = endColumn }
+                                        }
+                                        comment
+                                    )
+                                    |> Rope.filledPrependTo commentsAfter
                 )
-                Comments.singleLineCommentCore
+                Parser.getPosition
+                |= Comments.singleLineCommentCore
+                |= Parser.getCol
                 |= Parser.lazy (\() -> maybeLayoutUntilIgnored end)
 
         fromMultilineCommentNodeUntilEnd : Parser Comments
@@ -89,15 +101,25 @@ maybeLayoutUntilMap resToWithComments end =
         fromSingleLineCommentUntilEnd : Parser (WithComments b)
         fromSingleLineCommentUntilEnd =
             Parser.map
-                (\comment ->
-                    \after ->
-                        { comments =
-                            Rope.one comment
-                                |> Rope.filledPrependTo after.comments
-                        , syntax = after.syntax
-                        }
+                (\( startRow, startColumn ) ->
+                    \comment ->
+                        \endColumn ->
+                            \after ->
+                                { comments =
+                                    Rope.one
+                                        (Node
+                                            { start = { row = startRow, column = startColumn }
+                                            , end = { row = startRow, column = endColumn }
+                                            }
+                                            comment
+                                        )
+                                        |> Rope.filledPrependTo after.comments
+                                , syntax = after.syntax
+                                }
                 )
-                Comments.singleLineCommentCore
+                Parser.getPosition
+                |= Comments.singleLineCommentCore
+                |= Parser.getCol
                 |= Parser.lazy (\() -> maybeLayoutUntilMap resToWithComments end)
 
         fromMultilineCommentNodeUntilEnd : Parser (WithComments b)
@@ -154,13 +176,25 @@ maybeLayoutUntilWithComments end =
         fromSingleLineCommentUntilEnd : Parser (WithComments res)
         fromSingleLineCommentUntilEnd =
             Parser.map
-                (\comment ->
-                    \after ->
-                        { comments = Rope.one comment |> Rope.filledPrependTo after.comments
-                        , syntax = after.syntax
-                        }
+                (\( startRow, startColumn ) ->
+                    \comment ->
+                        \endColumn ->
+                            \after ->
+                                { comments =
+                                    Rope.one
+                                        (Node
+                                            { start = { row = startRow, column = startColumn }
+                                            , end = { row = startRow, column = endColumn }
+                                            }
+                                            comment
+                                        )
+                                        |> Rope.filledPrependTo after.comments
+                                , syntax = after.syntax
+                                }
                 )
-                Comments.singleLineCommentCore
+                Parser.getPosition
+                |= Comments.singleLineCommentCore
+                |= Parser.getCol
                 |= Parser.lazy (\() -> maybeLayoutUntilWithComments end)
 
         fromMultilineCommentNodeUntilEnd : Parser (WithComments res)
@@ -285,11 +319,22 @@ fromMultilineCommentNode =
 fromSingleLineCommentNode : Parser Comments
 fromSingleLineCommentNode =
     Parser.map
-        (\comment ->
-            \commentsAfter ->
-                Rope.one comment |> Rope.filledPrependTo commentsAfter
+        (\( startRow, startColumn ) ->
+            \comment ->
+                \endColumn ->
+                    \commentsAfter ->
+                        Rope.one
+                            (Node
+                                { start = { row = startRow, column = startColumn }
+                                , end = { row = startRow, column = endColumn }
+                                }
+                                comment
+                            )
+                            |> Rope.filledPrependTo commentsAfter
         )
-        Comments.singleLineCommentCore
+        Parser.getPosition
+        |= Comments.singleLineCommentCore
+        |= Parser.getCol
         |= whitespaceAndCommentsOrEmpty
 
 

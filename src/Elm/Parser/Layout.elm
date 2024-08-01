@@ -48,7 +48,9 @@ maybeLayoutUntilIgnored end =
                         \commentsAfter ->
                             Rope.one comment |> Rope.filledPrependTo commentsAfter
                     )
-                    Comments.multilineCommentString
+                    (Parser.multiComment "{-" "-}" Parser.Nestable
+                        |> Parser.getChompedString
+                    )
                     |= Parser.lazy (\() -> maybeLayoutUntilIgnored end)
                 , endNoComments
                 ]
@@ -108,7 +110,9 @@ maybeLayoutUntilMap resToWithComments end =
                             , syntax = after.syntax
                             }
                     )
-                    Comments.multilineCommentString
+                    (Parser.multiComment "{-" "-}" Parser.Nestable
+                        |> Parser.getChompedString
+                    )
                     |= Parser.lazy (\() -> maybeLayoutUntilMap resToWithComments end)
                 , endNoComments
                 ]

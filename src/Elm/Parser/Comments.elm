@@ -45,20 +45,13 @@ moduleDocumentation =
 
 declarationDocumentation : Parser.Parser (Node Documentation)
 declarationDocumentation =
-    -- technically making the whole parser fail on multi-line comments would be "correct"
-    -- but in practice, all declaration comments allow layout before which already handles
-    -- these.
-    -- Here's how a "safe" version would look:
-    -- Parser.oneOf
-    --[ -- if the next symbol isn't "{-|", we commit to failure
-    --  (Parser.symbol "{-" |. Parser.chompIf (\c -> c /= '|'))
-    --    |> Parser.backtrackable
-    --    |> Parser.Extra.continueWith (Parser.problem "multiline comment should be documentation comment")
-    --, Parser.multiComment "{-" "-}" Nestable
-    --    |> Parser.getChompedString
-    --    |> Node.parserCore
-    --]
-    --    |> Parser.backtrackable
-    Parser.multiComment "{-" "-}" Nestable
-        |> Parser.getChompedString
-        |> Node.parserCore
+    Parser.oneOf
+        [ -- if the next symbol isn't "{-|", we commit to failure
+          (Parser.symbol "{-" |. Parser.chompIf (\c -> c /= '|'))
+            |> Parser.backtrackable
+            |> Parser.Extra.continueWith (Parser.problem "multiline comment should be documentation comment")
+        , Parser.multiComment "{-" "-}" Nestable
+            |> Parser.getChompedString
+            |> Node.parserCore
+        ]
+        |> Parser.backtrackable

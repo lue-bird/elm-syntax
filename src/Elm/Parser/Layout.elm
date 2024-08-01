@@ -13,6 +13,7 @@ module Elm.Parser.Layout exposing
 import Elm.Parser.Comments as Comments
 import Elm.Parser.Node as Node
 import Parser exposing ((|.), (|=), Parser)
+import Parser.Extra
 import ParserWithComments exposing (Comments, WithComments)
 import Rope
 import Set
@@ -40,35 +41,28 @@ whitespace =
 fromCommentElseEmpty : Parser Comments
 fromCommentElseEmpty =
     -- since comments are comparatively rare
-    -- but expensive to check for, we allow shortcutting to dead end
-    Parser.andThen
-        (\source ->
-            Parser.andThen
-                (\offset ->
-                    case source |> String.slice offset (offset + 2) of
-                        "--" ->
-                            -- this will always succeed from here, so no need to fall back to Rope.empty
-                            fromSingleLineCommentNode
-
-                        "{-" ->
-                            fromMultilineCommentNodeOrEmptyOnProblem
-
-                        _ ->
-                            succeedRopeEmpty
-                )
-                Parser.getOffset
-        )
-        Parser.getSource
+    -- but expensive to check for, we allow shortcutting to the end
+    Parser.oneOf
+        [ -- this one is tricky!
+          -- if the next character is not a start of a comment,
+          --     the chomp fails and we fully return with no comments.
+          -- if the next character _is_ possibly the start of a comment, we commit to a temporaryProblem, making the inner oneOf fail
+          --     The inner oneOf is backtrackable though, so we continue below, checking for comments or end
+          Parser.oneOf
+            [ Parser.chompIf (\c -> c == '-' || c == '{')
+                |> Parser.Extra.continueWith temporaryProblem
+            , Parser.succeed Rope.empty
+            ]
+            |> Parser.backtrackable
+        , fromSingleLineCommentNode
+        , fromMultilineCommentNode
+        , Parser.succeed Rope.empty
+        ]
 
 
-succeedRopeEmpty : Parser (Rope.Rope a)
-succeedRopeEmpty =
-    Parser.succeed Rope.empty
-
-
-fromMultilineCommentNodeOrEmptyOnProblem : Parser Comments
-fromMultilineCommentNodeOrEmptyOnProblem =
-    Parser.oneOf [ fromMultilineCommentNode, Parser.succeed Rope.empty ]
+temporaryProblem : Parser a
+temporaryProblem =
+    Parser.problem ""
 
 
 fromMultilineCommentNode : Parser Comments
@@ -79,7 +73,7 @@ fromMultilineCommentNode =
                 Rope.one comment |> Rope.filledPrependTo commentsAfter
         )
         Comments.multilineCommentString
-        |= whitespaceAndCommentsOrEmpty
+        |= Parser.lazy (\() -> whitespaceAndCommentsOrEmpty)
 
 
 fromSingleLineCommentNode : Parser Comments
@@ -90,7 +84,7 @@ fromSingleLineCommentNode =
                 Rope.one comment |> Rope.filledPrependTo commentsAfter
         )
         Comments.singleLineCommentCore
-        |= whitespaceAndCommentsOrEmpty
+        |= Parser.lazy (\() -> whitespaceAndCommentsOrEmpty)
 
 
 maybeLayout : Parser Comments
@@ -149,44 +143,12 @@ problemPositivelyIndented =
 layout : Parser Comments
 layout =
     Parser.oneOf
-        [ (whitespace
+        [ whitespace
             |> Parser.andThen (\_ -> fromCommentElseEmpty)
-          )
-            |. positivelyIndented
-        , Parser.andThen
-            (\source ->
-                Parser.andThen
-                    (\offset ->
-                        case source |> String.slice offset (offset + 2) of
-                            "--" ->
-                                -- this will always succeed from here, so no need to fall back to Rope.empty
-                                fromSingleLineCommentNodeVerifyLayoutIndent
-
-                            "{-" ->
-                                fromMultilineCommentNodeOrEmptyOnProblemVerifyLayoutIndent
-
-                            _ ->
-                                problemMissingWhitespaceOrComments
-                    )
-                    Parser.getOffset
-            )
-            Parser.getSource
+        , fromSingleLineCommentNode
+        , fromMultilineCommentNode
         ]
-
-
-fromSingleLineCommentNodeVerifyLayoutIndent : Parser Comments
-fromSingleLineCommentNodeVerifyLayoutIndent =
-    fromSingleLineCommentNode |. positivelyIndented
-
-
-fromMultilineCommentNodeOrEmptyOnProblemVerifyLayoutIndent : Parser Comments
-fromMultilineCommentNodeOrEmptyOnProblemVerifyLayoutIndent =
-    fromMultilineCommentNodeOrEmptyOnProblem |. positivelyIndented
-
-
-problemMissingWhitespaceOrComments : Parser a
-problemMissingWhitespaceOrComments =
-    Parser.problem "missing whitespace/comments"
+        |. positivelyIndented
 
 
 optimisticLayout : Parser Comments

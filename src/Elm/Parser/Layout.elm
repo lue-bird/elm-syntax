@@ -57,38 +57,20 @@ maybeLayoutUntilIgnored end =
         endNoComments =
             positivelyIndented Rope.empty |. end
 
-        fromCommentElseEmptyThenEnd : Parser Comments
-        fromCommentElseEmptyThenEnd =
-            Parser.andThen
-                (\source ->
-                    Parser.andThen
-                        (\offset ->
-                            case source |> String.slice offset (offset + 2) of
-                                "--" ->
-                                    fromSingleLineCommentUntilEnd
-
-                                "{-" ->
-                                    fromMultilineCommentNodeUntilEnd
-
-                                _ ->
-                                    endNoComments
-                        )
-                        Parser.getOffset
-                )
-                Parser.getSource
-
         endOrFromCommentElseEmptyThenEnd : Parser Comments
         endOrFromCommentElseEmptyThenEnd =
             Parser.oneOf
                 [ endNoComments |> Parser.backtrackable
-                , fromCommentElseEmptyThenEnd
+                , fromSingleLineCommentUntilEnd
+                , fromMultilineCommentNodeUntilEnd
                 ]
     in
     Parser.oneOf
         [ whitespace
             |> Parser.andThen (\_ -> endOrFromCommentElseEmptyThenEnd)
         , endNoComments |> Parser.backtrackable
-        , fromCommentElseEmptyThenEnd
+        , fromSingleLineCommentUntilEnd
+        , fromMultilineCommentNodeUntilEnd
         ]
 
 
@@ -136,38 +118,20 @@ maybeLayoutUntilMap resToWithComments end =
             positivelyIndented resToWithComments
                 |= end
 
-        fromCommentElseEmptyThenEnd : Parser (WithComments b)
-        fromCommentElseEmptyThenEnd =
-            Parser.andThen
-                (\source ->
-                    Parser.andThen
-                        (\offset ->
-                            case source |> String.slice offset (offset + 2) of
-                                "--" ->
-                                    fromSingleLineCommentUntilEnd
-
-                                "{-" ->
-                                    fromMultilineCommentNodeUntilEnd
-
-                                _ ->
-                                    endNoComments
-                        )
-                        Parser.getOffset
-                )
-                Parser.getSource
-
         endOrFromCommentElseEmptyThenEnd : Parser (WithComments b)
         endOrFromCommentElseEmptyThenEnd =
             Parser.oneOf
                 [ endNoComments |> Parser.backtrackable
-                , fromCommentElseEmptyThenEnd
+                , fromSingleLineCommentUntilEnd
+                , fromMultilineCommentNodeUntilEnd
                 ]
     in
     Parser.oneOf
         [ whitespace
             |> Parser.andThen (\_ -> endOrFromCommentElseEmptyThenEnd)
         , endNoComments |> Parser.backtrackable
-        , fromCommentElseEmptyThenEnd
+        , fromSingleLineCommentUntilEnd
+        , fromMultilineCommentNodeUntilEnd
         ]
 
 

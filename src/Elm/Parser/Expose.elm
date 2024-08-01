@@ -42,11 +42,11 @@ exposingListInner =
             (\( headStartRow, headStartColumn ) ->
                 \headElement ->
                     \( headEndRow, headEndColumn ) ->
-                        \commentsAfterHeadElement ->
+                        \commentsAfterHead ->
                             \tailElements ->
                                 { comments =
                                     headElement.comments
-                                        |> Rope.prependTo commentsAfterHeadElement
+                                        |> Rope.prependTo commentsAfterHead
                                         |> Rope.prependTo tailElements.comments
                                 , syntax =
                                     Explicit

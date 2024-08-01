@@ -28,16 +28,14 @@ effectWhereClause =
     Parser.map
         (\fnName ->
             \commentsAfterFnName ->
-                \commentsAfterEqual ->
-                    \typeName_ ->
-                        { comments = commentsAfterFnName |> Rope.prependTo commentsAfterEqual
-                        , syntax = ( fnName, typeName_ )
-                        }
+                \typeName_ ->
+                    { comments = commentsAfterFnName |> Rope.prependTo typeName_.comments
+                    , syntax = ( fnName, typeName_.syntax )
+                    }
         )
         Tokens.functionName
         |= Layout.maybeLayoutUntilIgnored Tokens.equal
-        |= Layout.maybeLayout
-        |= Node.parserCore Tokens.typeName
+        |= Layout.maybeLayoutUntil (Node.parserCore Tokens.typeName)
 
 
 whereBlock : Parser (WithComments { command : Maybe (Node String), subscription : Maybe (Node String) })
@@ -68,19 +66,9 @@ whereBlock =
 
 effectWhereClauses : Parser (WithComments { command : Maybe (Node String), subscription : Maybe (Node String) })
 effectWhereClauses =
-    (Tokens.whereToken
+    Tokens.whereToken
         |> Parser.Extra.continueWith
-            (Parser.map
-                (\commentsBefore ->
-                    \whereResult ->
-                        { comments = commentsBefore |> Rope.prependTo whereResult.comments
-                        , syntax = whereResult.syntax
-                        }
-                )
-                Layout.maybeLayout
-            )
-    )
-        |= whereBlock
+            (Layout.maybeLayoutUntilWithComments whereBlock)
 
 
 effectModuleDefinition : Parser (WithComments Module)
@@ -89,38 +77,31 @@ effectModuleDefinition =
         |> Parser.Extra.continueWith
             (Parser.map
                 (\commentsAfterEffect ->
-                    \commentsModule ->
-                        \name ->
-                            \commentsAfterName ->
-                                \whereClauses ->
-                                    \commentsAfterWhereClauses ->
-                                        \exp ->
-                                            { comments =
-                                                commentsAfterEffect
-                                                    |> Rope.prependTo commentsModule
-                                                    |> Rope.prependTo commentsAfterName
-                                                    |> Rope.prependTo whereClauses.comments
-                                                    |> Rope.prependTo commentsAfterWhereClauses
-                                                    |> Rope.prependTo exp.comments
-                                            , syntax =
-                                                EffectModule
-                                                    { moduleName = name
-                                                    , exposingList = exp.syntax
-                                                    , command = whereClauses.syntax.command
-                                                    , subscription = whereClauses.syntax.subscription
-                                                    }
-                                            }
+                    \name ->
+                        \whereClauses ->
+                            \exp ->
+                                { comments =
+                                    commentsAfterEffect
+                                        |> Rope.prependTo name.comments
+                                        |> Rope.prependTo whereClauses.comments
+                                        |> Rope.prependTo exp.comments
+                                , syntax =
+                                    EffectModule
+                                        { moduleName = name.syntax
+                                        , exposingList = exp.syntax
+                                        , command = whereClauses.syntax.command
+                                        , subscription = whereClauses.syntax.subscription
+                                        }
+                                }
                 )
                 Layout.maybeLayout
             )
     )
         |. Tokens.moduleToken
-        |= Layout.maybeLayout
-        |= moduleName
-        |= Layout.maybeLayout
-        |= effectWhereClauses
-        |= Layout.maybeLayout
-        |= Node.parser exposeDefinition
+        |= Layout.maybeLayoutUntil moduleName
+        |= Layout.maybeLayoutUntilWithComments effectWhereClauses
+        |= Layout.maybeLayoutUntilWithComments
+            (Node.parser exposeDefinition)
 
 
 normalModuleDefinition : Parser (WithComments Module)
@@ -128,27 +109,22 @@ normalModuleDefinition =
     (Tokens.moduleToken
         |> Parser.Extra.continueWith
             (Parser.map
-                (\commentsAfterModule ->
-                    \moduleName ->
-                        \commentsAfterModuleName ->
-                            \exposingList ->
-                                { comments =
-                                    commentsAfterModule
-                                        |> Rope.prependTo commentsAfterModuleName
-                                        |> Rope.prependTo exposingList.comments
-                                , syntax =
-                                    NormalModule
-                                        { moduleName = moduleName
-                                        , exposingList = exposingList.syntax
-                                        }
+                (\moduleName ->
+                    \exposingList ->
+                        { comments =
+                            moduleName.comments
+                                |> Rope.prependTo exposingList.comments
+                        , syntax =
+                            NormalModule
+                                { moduleName = moduleName.syntax
+                                , exposingList = exposingList.syntax
                                 }
+                        }
                 )
-                Layout.maybeLayout
+                (Layout.maybeLayoutUntil moduleName)
             )
     )
-        |= moduleName
-        |= Layout.maybeLayout
-        |= Node.parser exposeDefinition
+        |= Layout.maybeLayoutUntilWithComments (Node.parser exposeDefinition)
 
 
 portModuleDefinition : Parser (WithComments Module)
@@ -157,23 +133,23 @@ portModuleDefinition =
         |> Parser.Extra.continueWith
             (Parser.map
                 (\commentsAfterPort ->
-                    \commentsAfterModule ->
-                        \moduleName ->
-                            \commentsAfterModuleName ->
-                                \exposingList ->
-                                    { comments =
-                                        commentsAfterPort
-                                            |> Rope.prependTo commentsAfterModule
-                                            |> Rope.prependTo commentsAfterModuleName
-                                            |> Rope.prependTo exposingList.comments
-                                    , syntax = PortModule { moduleName = moduleName, exposingList = exposingList.syntax }
+                    \moduleName ->
+                        \exposingList ->
+                            { comments =
+                                commentsAfterPort
+                                    |> Rope.prependTo moduleName.comments
+                                    |> Rope.prependTo exposingList.comments
+                            , syntax =
+                                PortModule
+                                    { moduleName = moduleName.syntax
+                                    , exposingList = exposingList.syntax
                                     }
+                            }
                 )
                 Layout.maybeLayout
             )
     )
         |. Tokens.moduleToken
-        |= Layout.maybeLayout
-        |= moduleName
-        |= Layout.maybeLayout
-        |= Node.parser exposeDefinition
+        |= Layout.maybeLayoutUntil moduleName
+        |= Layout.maybeLayoutUntilWithComments
+            (Node.parser exposeDefinition)

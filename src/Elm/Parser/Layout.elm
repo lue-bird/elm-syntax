@@ -2,7 +2,10 @@ module Elm.Parser.Layout exposing
     ( layoutStrict
     , maybeAroundBothSides
     , maybeLayout
+    , maybeLayoutUntil
     , maybeLayoutUntilIgnored
+    , maybeLayoutUntilMap
+    , maybeLayoutUntilWithComments
     , moduleLevelIndentation
     , onTopIndentation
     , optimisticLayout
@@ -12,17 +15,22 @@ module Elm.Parser.Layout exposing
 
 import Elm.Parser.Comments as Comments
 import Elm.Parser.Node as Node
-import Elm.Syntax.Node exposing (Node)
 import Parser exposing ((|.), (|=), Parser)
 import ParserWithComments exposing (Comments, WithComments)
 import Rope
 import Set
 
 
+{-| since comments are comparatively rare but expensive to check for,
+we allow shortcutting to a given `Parser ()`.
+
+Use [`maybeLayoutUntil`](#maybeLayoutUntil) for other kinds of end parsers
+
+-}
 maybeLayoutUntilIgnored : Parser () -> Parser.Parser Comments
 maybeLayoutUntilIgnored end =
     let
-        fromSingleLineCommentUntilEnd : Parser (Rope.Rope (Node String))
+        fromSingleLineCommentUntilEnd : Parser Comments
         fromSingleLineCommentUntilEnd =
             Parser.map
                 (\comment ->
@@ -34,7 +42,16 @@ maybeLayoutUntilIgnored end =
 
         fromMultilineCommentNodeUntilEnd : Parser Comments
         fromMultilineCommentNodeUntilEnd =
-            Parser.oneOf [ fromMultilineCommentNode, endNoComments ]
+            Parser.oneOf
+                [ Node.parserCoreMap
+                    (\comment ->
+                        \commentsAfter ->
+                            Rope.one comment |> Rope.filledPrependTo commentsAfter
+                    )
+                    Comments.multilineCommentString
+                    |= Parser.lazy (\() -> maybeLayoutUntilIgnored end)
+                , endNoComments
+                ]
 
         endNoComments : Parser Comments
         endNoComments =
@@ -42,8 +59,6 @@ maybeLayoutUntilIgnored end =
 
         fromCommentElseEmptyThenEnd : Parser Comments
         fromCommentElseEmptyThenEnd =
-            -- since comments are comparatively rare
-            -- but expensive to check for, we allow shortcutting to dead end
             Parser.andThen
                 (\source ->
                     Parser.andThen
@@ -63,6 +78,164 @@ maybeLayoutUntilIgnored end =
                 Parser.getSource
 
         endOrFromCommentElseEmptyThenEnd : Parser Comments
+        endOrFromCommentElseEmptyThenEnd =
+            Parser.oneOf
+                [ endNoComments |> Parser.backtrackable
+                , fromCommentElseEmptyThenEnd
+                ]
+    in
+    Parser.oneOf
+        [ whitespace
+            |> Parser.andThen (\_ -> endOrFromCommentElseEmptyThenEnd)
+        , endNoComments |> Parser.backtrackable
+        , fromCommentElseEmptyThenEnd
+        ]
+
+
+maybeLayoutUntil : Parser res -> Parser.Parser (WithComments res)
+maybeLayoutUntil end =
+    maybeLayoutUntilMap
+        (\syntax -> { comments = Rope.empty, syntax = syntax })
+        end
+
+
+maybeLayoutUntilMap : (a -> WithComments b) -> Parser a -> Parser.Parser (WithComments b)
+maybeLayoutUntilMap resToWithComments end =
+    let
+        fromSingleLineCommentUntilEnd : Parser (WithComments b)
+        fromSingleLineCommentUntilEnd =
+            Parser.map
+                (\comment ->
+                    \after ->
+                        { comments =
+                            Rope.one comment
+                                |> Rope.filledPrependTo after.comments
+                        , syntax = after.syntax
+                        }
+                )
+                Comments.singleLineCommentCore
+                |= Parser.lazy (\() -> maybeLayoutUntilMap resToWithComments end)
+
+        fromMultilineCommentNodeUntilEnd : Parser (WithComments b)
+        fromMultilineCommentNodeUntilEnd =
+            Parser.oneOf
+                [ Node.parserCoreMap
+                    (\comment ->
+                        \after ->
+                            { comments = Rope.one comment |> Rope.filledPrependTo after.comments
+                            , syntax = after.syntax
+                            }
+                    )
+                    Comments.multilineCommentString
+                    |= Parser.lazy (\() -> maybeLayoutUntilMap resToWithComments end)
+                , endNoComments
+                ]
+
+        endNoComments : Parser (WithComments b)
+        endNoComments =
+            positivelyIndented resToWithComments
+                |= end
+
+        fromCommentElseEmptyThenEnd : Parser (WithComments b)
+        fromCommentElseEmptyThenEnd =
+            Parser.andThen
+                (\source ->
+                    Parser.andThen
+                        (\offset ->
+                            case source |> String.slice offset (offset + 2) of
+                                "--" ->
+                                    fromSingleLineCommentUntilEnd
+
+                                "{-" ->
+                                    fromMultilineCommentNodeUntilEnd
+
+                                _ ->
+                                    endNoComments
+                        )
+                        Parser.getOffset
+                )
+                Parser.getSource
+
+        endOrFromCommentElseEmptyThenEnd : Parser (WithComments b)
+        endOrFromCommentElseEmptyThenEnd =
+            Parser.oneOf
+                [ endNoComments |> Parser.backtrackable
+                , fromCommentElseEmptyThenEnd
+                ]
+    in
+    Parser.oneOf
+        [ whitespace
+            |> Parser.andThen (\_ -> endOrFromCommentElseEmptyThenEnd)
+        , endNoComments |> Parser.backtrackable
+        , fromCommentElseEmptyThenEnd
+        ]
+
+
+{-| since comments are comparatively rare but expensive to check for,
+we allow shortcutting to a given end parser.
+
+Do **not** use it if the end parser can `succeed` in a branch (like [`ParserWithComments.many`](ParserWithComments#many)).
+In that case, use [`maybeLayout`](#maybeLayout) `|= yourParser` instead.
+
+Use [`maybeLayoutUntilIgnored`](#maybeLayoutUntilIgnored) if your end is a `Parser ()`
+
+-}
+maybeLayoutUntilWithComments : Parser (WithComments res) -> Parser.Parser (WithComments res)
+maybeLayoutUntilWithComments end =
+    let
+        fromSingleLineCommentUntilEnd : Parser (WithComments res)
+        fromSingleLineCommentUntilEnd =
+            Parser.map
+                (\comment ->
+                    \after ->
+                        { comments = Rope.one comment |> Rope.filledPrependTo after.comments
+                        , syntax = after.syntax
+                        }
+                )
+                Comments.singleLineCommentCore
+                |= Parser.lazy (\() -> maybeLayoutUntilWithComments end)
+
+        fromMultilineCommentNodeUntilEnd : Parser (WithComments res)
+        fromMultilineCommentNodeUntilEnd =
+            Parser.oneOf
+                [ Node.parserCoreMap
+                    (\comment ->
+                        \after ->
+                            { comments = Rope.one comment |> Rope.filledPrependTo after.comments
+                            , syntax = after.syntax
+                            }
+                    )
+                    Comments.multilineCommentString
+                    |= Parser.lazy (\() -> maybeLayoutUntilWithComments end)
+                , endNoComments
+                ]
+
+        endNoComments : Parser (WithComments res)
+        endNoComments =
+            positivelyIndented identity
+                |= end
+
+        fromCommentElseEmptyThenEnd : Parser (WithComments res)
+        fromCommentElseEmptyThenEnd =
+            Parser.andThen
+                (\source ->
+                    Parser.andThen
+                        (\offset ->
+                            case source |> String.slice offset (offset + 2) of
+                                "--" ->
+                                    fromSingleLineCommentUntilEnd
+
+                                "{-" ->
+                                    fromMultilineCommentNodeUntilEnd
+
+                                _ ->
+                                    endNoComments
+                        )
+                        Parser.getOffset
+                )
+                Parser.getSource
+
+        endOrFromCommentElseEmptyThenEnd : Parser (WithComments res)
         endOrFromCommentElseEmptyThenEnd =
             Parser.oneOf
                 [ endNoComments |> Parser.backtrackable
@@ -274,16 +447,13 @@ problemTopIndentation =
 maybeAroundBothSides : Parser (WithComments b) -> Parser (WithComments b)
 maybeAroundBothSides x =
     Parser.map
-        (\before ->
-            \v ->
-                \after ->
-                    { comments =
-                        before
-                            |> Rope.prependTo v.comments
-                            |> Rope.prependTo after
-                    , syntax = v.syntax
-                    }
+        (\v ->
+            \after ->
+                { comments =
+                    v.comments
+                        |> Rope.prependTo after
+                , syntax = v.syntax
+                }
         )
-        maybeLayout
-        |= x
+        (maybeLayoutUntilWithComments x)
         |= maybeLayout

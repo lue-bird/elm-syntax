@@ -29,13 +29,11 @@ singleLineCommentCore =
 
 multilineCommentString : Parser.Parser String
 multilineCommentString =
-    Parser.oneOf
-        [ Parser.symbol "{-|"
-            |> Parser.Extra.continueWith (Parser.problem "unexpected documentation comment")
-        , Parser.multiComment "{-" "-}" Nestable
-            |> Parser.getChompedString
-        ]
-        |> Parser.backtrackable
+    -- since normal multi-line comments are consumed by layout
+    -- and there is always layout before multilineCommentString,
+    -- we can safely skip disambiguation
+    Parser.multiComment "{-" "-}" Nestable
+        |> Parser.getChompedString
 
 
 moduleDocumentation : Parser (Node String)

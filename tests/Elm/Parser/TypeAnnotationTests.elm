@@ -70,7 +70,11 @@ all =
                         )
         , test "types with and without spacing should parse to the same" <|
             \() ->
-                parse "Bar " (Parser.typeAnnotation |> CustomParser.ignore Layout.maybeLayout)
+                parse "Bar "
+                    (CustomParser.map2 (\result _ -> result)
+                        Parser.typeAnnotation
+                        Layout.optimisticLayout
+                    )
                     |> Expect.equal (parse "Bar" Parser.typeAnnotation)
         , test "typedTypeReference 1" <|
             \() ->

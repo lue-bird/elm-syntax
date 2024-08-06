@@ -2,7 +2,7 @@ module Elm.Parser.Declarations exposing (declaration)
 
 import CustomParser exposing (Parser)
 import Elm.Parser.Comments as Comments
-import Elm.Parser.Expression exposing (expression)
+import Elm.Parser.Expression exposing (positivelyIndentedExpression)
 import Elm.Parser.Layout as Layout
 import Elm.Parser.Node as Node
 import Elm.Parser.Patterns as Patterns
@@ -258,34 +258,41 @@ functionAfterDocumentation =
         )
         -- infix declarations itself don't have documentation
         (Node.parserCore Tokens.functionName)
-        Layout.maybeLayout
-        (CustomParser.orSucceed
-            (CustomParser.map4
-                (\commentsBeforeTypeAnnotation typeAnnotationResult implementationName afterImplementationName ->
-                    Just
-                        { comments =
-                            commentsBeforeTypeAnnotation
-                                |> Rope.prependTo typeAnnotationResult.comments
-                                |> Rope.prependTo implementationName.comments
-                                |> Rope.prependTo afterImplementationName
-                        , syntax =
-                            { implementationName = implementationName.syntax
-                            , typeAnnotation = typeAnnotationResult.syntax
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (CustomParser.orSucceed
+                (CustomParser.map5
+                    (\commentsBeforeTypeAnnotation typeAnnotationResult implementationName afterImplementationName () ->
+                        Just
+                            { comments =
+                                commentsBeforeTypeAnnotation
+                                    |> Rope.prependTo typeAnnotationResult.comments
+                                    |> Rope.prependTo implementationName.comments
+                                    |> Rope.prependTo afterImplementationName
+                            , syntax =
+                                { implementationName = implementationName.syntax
+                                , typeAnnotation = typeAnnotationResult.syntax
+                                }
                             }
-                        }
+                    )
+                    (CustomParser.symbolFollowedBy ":" Layout.optimisticLayout)
+                    (Layout.positivelyIndentedFollowedBy
+                        TypeAnnotation.typeAnnotation
+                    )
+                    (Layout.layoutStrictFollowedBy
+                        (Node.parserCore Tokens.functionName)
+                    )
+                    Layout.optimisticLayout
+                    (Layout.positivelyIndentedFollowedBy (CustomParser.succeed ()))
                 )
-                (CustomParser.symbolFollowedBy ":" Layout.maybeLayout)
-                TypeAnnotation.typeAnnotation
-                (Layout.layoutStrictFollowedBy
-                    (Node.parserCore Tokens.functionName)
-                )
-                Layout.maybeLayout
+                Nothing
             )
-            Nothing
         )
         parameterPatternsEqual
-        Layout.maybeLayout
-        expression
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            positivelyIndentedExpression
+        )
 
 
 functionDeclarationWithoutDocumentation : Parser (WithComments (Node Declaration))
@@ -367,46 +374,54 @@ functionDeclarationWithoutDocumentation =
                             ("Expected to find the declaration for " ++ startName ++ " but found " ++ implementationName)
         )
         (Node.parserCore Tokens.functionNameNotInfix)
-        Layout.maybeLayout
-        (CustomParser.orSucceed
-            (CustomParser.map4
-                (\commentsBeforeTypeAnnotation typeAnnotationResult implementationName afterImplementationName ->
-                    Just
-                        { comments =
-                            commentsBeforeTypeAnnotation
-                                |> Rope.prependTo typeAnnotationResult.comments
-                                |> Rope.prependTo implementationName.comments
-                                |> Rope.prependTo afterImplementationName
-                        , implementationName = implementationName.syntax
-                        , typeAnnotation = typeAnnotationResult.syntax
-                        }
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (CustomParser.orSucceed
+                (CustomParser.map5
+                    (\commentsBeforeTypeAnnotation typeAnnotationResult implementationName afterImplementationName () ->
+                        Just
+                            { comments =
+                                commentsBeforeTypeAnnotation
+                                    |> Rope.prependTo typeAnnotationResult.comments
+                                    |> Rope.prependTo implementationName.comments
+                                    |> Rope.prependTo afterImplementationName
+                            , implementationName = implementationName.syntax
+                            , typeAnnotation = typeAnnotationResult.syntax
+                            }
+                    )
+                    (CustomParser.symbolFollowedBy ":" Layout.optimisticLayout)
+                    (Layout.positivelyIndentedFollowedBy
+                        TypeAnnotation.typeAnnotation
+                    )
+                    (Layout.layoutStrictFollowedBy
+                        (Node.parserCore Tokens.functionName)
+                    )
+                    Layout.optimisticLayout
+                    (Layout.positivelyIndentedFollowedBy (CustomParser.succeed ()))
                 )
-                (CustomParser.symbolFollowedBy ":" Layout.maybeLayout)
-                TypeAnnotation.typeAnnotation
-                (Layout.layoutStrictFollowedBy
-                    (Node.parserCore Tokens.functionName)
-                )
-                Layout.maybeLayout
+                Nothing
             )
-            Nothing
         )
         parameterPatternsEqual
-        Layout.maybeLayout
-        expression
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            positivelyIndentedExpression
+        )
         |> CustomParser.andThen identity
 
 
 parameterPatternsEqual : Parser (WithComments (List (Node Pattern)))
 parameterPatternsEqual =
     ParserWithComments.until Tokens.equal
-        (CustomParser.map2
-            (\patternResult commentsAfterPattern ->
+        (CustomParser.map3
+            (\patternResult commentsAfterPattern () ->
                 { comments = patternResult.comments |> Rope.prependTo commentsAfterPattern
                 , syntax = patternResult.syntax
                 }
             )
             Patterns.patternNotDirectlyComposing
-            Layout.maybeLayout
+            Layout.optimisticLayout
+            (Layout.positivelyIndentedFollowedBy (CustomParser.succeed ()))
         )
 
 
@@ -425,21 +440,29 @@ infixDeclaration =
                     { direction = direction, precedence = precedence, operator = operator, function = fn }
             }
         )
-        (CustomParser.keywordFollowedBy "infix" Layout.maybeLayout)
-        (Node.parserCore infixDirection)
-        Layout.maybeLayout
-        (Node.parserCore CustomParser.int)
-        Layout.maybeLayout
-        (Node.parserCore
-            (CustomParser.map2
-                (\prefixOperator () -> prefixOperator)
-                (CustomParser.symbolFollowedBy "(" Tokens.prefixOperatorToken)
-                Tokens.parensEnd
+        (CustomParser.keywordFollowedBy "infix" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parserCore infixDirection)
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parserCore CustomParser.int)
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parserCore
+                (CustomParser.map2
+                    (\prefixOperator () -> prefixOperator)
+                    (CustomParser.symbolFollowedBy "(" Tokens.prefixOperatorToken)
+                    Tokens.parensEnd
+                )
             )
         )
         (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "=")
-        Layout.maybeLayout
-        (Node.parserCore Tokens.functionName)
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parserCore Tokens.functionName)
+        )
         |> Node.parser
 
 
@@ -469,11 +492,15 @@ portDeclarationAfterDocumentation =
                     }
             }
         )
-        (CustomParser.keywordFollowedBy "port" Layout.maybeLayout)
-        (Node.parserCore Tokens.functionName)
+        (CustomParser.keywordFollowedBy "port" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parserCore Tokens.functionName)
+        )
         (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy ":")
-        Layout.maybeLayout
-        typeAnnotation
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            typeAnnotation
+        )
 
 
 portDeclarationWithoutDocumentation : Parser (WithComments (Node Declaration))
@@ -501,11 +528,15 @@ portDeclarationWithoutDocumentation =
                     )
             }
         )
-        (CustomParser.keywordFollowedBy "port" Layout.maybeLayout)
-        (Node.parserCore Tokens.functionName)
+        (CustomParser.keywordFollowedBy "port" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parserCore Tokens.functionName)
+        )
         (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy ":")
-        Layout.maybeLayout
-        typeAnnotation
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            typeAnnotation
+        )
 
 
 typeOrTypeAliasDefinitionAfterDocumentation : Parser (WithComments DeclarationAfterDocumentation)
@@ -516,10 +547,12 @@ typeOrTypeAliasDefinitionAfterDocumentation =
             , syntax = declarationAfterDocumentation.syntax
             }
         )
-        (CustomParser.keywordFollowedBy "type" Layout.maybeLayout)
-        (CustomParser.oneOf2
-            typeAliasDefinitionAfterDocumentationAfterTypePrefix
-            customTypeDefinitionAfterDocumentationAfterTypePrefix
+        (CustomParser.keywordFollowedBy "type" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            (CustomParser.oneOf2
+                typeAliasDefinitionAfterDocumentationAfterTypePrefix
+                customTypeDefinitionAfterDocumentationAfterTypePrefix
+            )
         )
 
 
@@ -541,12 +574,18 @@ typeAliasDefinitionAfterDocumentationAfterTypePrefix =
                     }
             }
         )
-        (CustomParser.keywordFollowedBy "alias" Layout.maybeLayout)
-        (Node.parserCore Tokens.typeName)
-        Layout.maybeLayout
-        typeGenericListEquals
-        Layout.maybeLayout
-        typeAnnotation
+        (CustomParser.keywordFollowedBy "alias" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parserCore Tokens.typeName)
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            typeGenericListEquals
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            typeAnnotation
+        )
 
 
 customTypeDefinitionAfterDocumentationAfterTypePrefix : Parser (WithComments DeclarationAfterDocumentation)
@@ -569,10 +608,14 @@ customTypeDefinitionAfterDocumentationAfterTypePrefix =
             }
         )
         (Node.parserCore Tokens.typeName)
-        Layout.maybeLayout
-        typeGenericListEquals
-        Layout.maybeLayout
-        valueConstructor
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            typeGenericListEquals
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            valueConstructor
+        )
         (ParserWithComments.manyWithoutReverse
             (CustomParser.map3
                 (\commentsBeforePipe commentsAfterPipe variantResult ->
@@ -584,8 +627,10 @@ customTypeDefinitionAfterDocumentationAfterTypePrefix =
                     }
                 )
                 (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "|" |> CustomParser.backtrackable)
-                Layout.maybeLayout
-                valueConstructor
+                Layout.optimisticLayout
+                (Layout.positivelyIndentedFollowedBy
+                    valueConstructor
+                )
             )
         )
 
@@ -652,10 +697,12 @@ typeOrTypeAliasDefinitionWithoutDocumentation =
                         , end = typeAnnotationRange.end
                         }
             )
-            (CustomParser.keywordFollowedBy "type" Layout.maybeLayout)
-            (CustomParser.oneOf2
-                typeAliasDefinitionWithoutDocumentationAfterTypePrefix
-                customTypeDefinitionWithoutDocumentationAfterTypePrefix
+            (CustomParser.keywordFollowedBy "type" Layout.optimisticLayout)
+            (Layout.positivelyIndentedFollowedBy
+                (CustomParser.oneOf2
+                    typeAliasDefinitionWithoutDocumentationAfterTypePrefix
+                    customTypeDefinitionWithoutDocumentationAfterTypePrefix
+                )
             )
         )
 
@@ -678,12 +725,18 @@ typeAliasDefinitionWithoutDocumentationAfterTypePrefix =
                     }
             }
         )
-        (CustomParser.keywordFollowedBy "alias" Layout.maybeLayout)
-        (Node.parserCore Tokens.typeName)
-        Layout.maybeLayout
-        typeGenericListEquals
-        Layout.maybeLayout
-        typeAnnotation
+        (CustomParser.keywordFollowedBy "alias" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parserCore Tokens.typeName)
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            typeGenericListEquals
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            typeAnnotation
+        )
 
 
 customTypeDefinitionWithoutDocumentationAfterTypePrefix : Parser (WithComments TypeOrTypeAliasDeclarationWithoutDocumentation)
@@ -706,10 +759,14 @@ customTypeDefinitionWithoutDocumentationAfterTypePrefix =
             }
         )
         (Node.parserCore Tokens.typeName)
-        Layout.maybeLayout
-        typeGenericListEquals
-        Layout.maybeLayout
-        valueConstructor
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            typeGenericListEquals
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            valueConstructor
+        )
         (ParserWithComments.manyWithoutReverse
             (CustomParser.map3
                 (\commentsBeforePipe commentsAfterPipe variantResult ->
@@ -721,8 +778,10 @@ customTypeDefinitionWithoutDocumentationAfterTypePrefix =
                     }
                 )
                 (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "|" |> CustomParser.backtrackable)
-                Layout.maybeLayout
-                valueConstructor
+                Layout.optimisticLayout
+                (Layout.positivelyIndentedFollowedBy
+                    valueConstructor
+                )
             )
         )
 
@@ -757,8 +816,10 @@ valueConstructor =
                     , syntax = typeAnnotationResult.syntax
                     }
                 )
-                (Layout.maybeLayout |> CustomParser.backtrackable)
-                typeAnnotationNoFnExcludingTypedWithArguments
+                (Layout.optimisticLayout |> CustomParser.backtrackable)
+                (Layout.positivelyIndentedFollowedBy
+                    typeAnnotationNoFnExcludingTypedWithArguments
+                )
             )
         )
 
@@ -766,12 +827,13 @@ valueConstructor =
 typeGenericListEquals : Parser (WithComments (List (Node String)))
 typeGenericListEquals =
     ParserWithComments.until Tokens.equal
-        (CustomParser.map2
-            (\name commentsAfterName ->
+        (CustomParser.map3
+            (\name commentsAfterName () ->
                 { comments = commentsAfterName
                 , syntax = name
                 }
             )
             (Node.parserCore Tokens.functionName)
-            Layout.maybeLayout
+            Layout.optimisticLayout
+            (Layout.positivelyIndentedFollowedBy (CustomParser.succeed ()))
         )

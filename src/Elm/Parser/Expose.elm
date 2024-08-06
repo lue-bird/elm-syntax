@@ -47,21 +47,26 @@ exposingListInner =
                 }
             )
             exposable
-            Layout.maybeLayout
-            (ParserWithComments.many
-                (CustomParser.symbolFollowedBy ","
-                    (Layout.maybeAroundBothSides exposable)
+            Layout.optimisticLayout
+            (Layout.positivelyIndentedFollowedBy
+                (ParserWithComments.many
+                    (CustomParser.symbolFollowedBy ","
+                        (Layout.maybeAroundBothSides exposable)
+                    )
                 )
             )
         )
-        (CustomParser.mapWithStartAndEndPosition
-            (\start commentsAfterDotDot end ->
-                { comments = commentsAfterDotDot
-                , syntax =
-                    All { start = start, end = end }
-                }
+        (CustomParser.map2 (\result () -> result)
+            (CustomParser.mapWithStartAndEndPosition
+                (\start commentsAfterDotDot end ->
+                    { comments = commentsAfterDotDot
+                    , syntax =
+                        All { start = start, end = end }
+                    }
+                )
+                (CustomParser.symbolFollowedBy ".." Layout.optimisticLayout)
             )
-            (CustomParser.symbolFollowedBy ".." Layout.maybeLayout)
+            (Layout.positivelyIndentedFollowedBy (CustomParser.succeed ()))
         )
 
 
@@ -112,16 +117,18 @@ typeExpose =
                         , syntax = all.range
                         }
                 )
-                (Layout.maybeLayout |> CustomParser.backtrackable)
-                (CustomParser.mapWithStartAndEndPosition
-                    (\start comments end ->
-                        { comments = comments, range = { start = start, end = end } }
-                    )
-                    (CustomParser.map2 (\left right -> left |> Rope.prependTo right)
-                        (CustomParser.symbolFollowedBy "("
-                            (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "..")
+                (Layout.optimisticLayout |> CustomParser.backtrackable)
+                (Layout.positivelyIndentedFollowedBy
+                    (CustomParser.mapWithStartAndEndPosition
+                        (\start comments end ->
+                            { comments = comments, range = { start = start, end = end } }
                         )
-                        (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy ")")
+                        (CustomParser.map2 (\left right -> left |> Rope.prependTo right)
+                            (CustomParser.symbolFollowedBy "("
+                                (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "..")
+                            )
+                            (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy ")")
+                        )
                     )
                 )
             )

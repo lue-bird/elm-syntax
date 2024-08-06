@@ -13,39 +13,39 @@ all =
     describe "LayoutTests"
         [ test "empty" <|
             \() ->
-                parse "" (CustomParser.withIndent 0 Layout.maybeLayout)
+                parse "" (CustomParser.withIndent 0 maybeLayout)
                     |> Expect.equal (Just ())
         , test "just whitespace" <|
             \() ->
-                parse " " Layout.maybeLayout
+                parse " " maybeLayout
                     |> Expect.equal (Just ())
         , test "spaces followed by new line" <|
             \() ->
-                parse " \n" Layout.maybeLayout
+                parse " \n" maybeLayout
                     |> Expect.equal Nothing
         , test "with newline and higher indent 2" <|
             \() ->
-                parse "\n  " Layout.maybeLayout
+                parse "\n  " maybeLayout
                     |> Expect.equal (Just ())
         , test "with newline and higher indent 3" <|
             \() ->
-                parse " \n " Layout.maybeLayout
+                parse " \n " maybeLayout
                     |> Expect.equal (Just ())
         , test "maybeLayout with multiline comment" <|
             \() ->
-                parse "\n--x\n{- foo \n-}\n " Layout.maybeLayout
+                parse "\n--x\n{- foo \n-}\n " maybeLayout
                     |> Expect.equal (Just ())
         , test "maybeLayout with documentation comment fails" <|
             \() ->
-                parse "\n--x\n{-| foo \n-}\n " Layout.maybeLayout
+                parse "\n--x\n{-| foo \n-}\n " maybeLayout
                     |> Expect.equal Nothing
         , test "with newline and higher indent 4" <|
             \() ->
-                parse " \n  " (setIndent 1 Layout.maybeLayout)
+                parse " \n  " (setIndent 1 maybeLayout)
                     |> Expect.equal (Just ())
         , test "newlines spaces and single line comments" <|
             \() ->
-                parse "\n\n      --time\n  " Layout.maybeLayout
+                parse "\n\n      --time\n  " maybeLayout
                     |> Expect.equal (Just ())
         , test "layoutStrict" <|
             \() ->
@@ -88,6 +88,13 @@ all =
                 parse "\n{- some note -}    \n" Layout.layoutStrict
                     |> Expect.equal (Just ())
         ]
+
+
+maybeLayout : CustomParser.Parser Comments
+maybeLayout =
+    CustomParser.map2 (\result () -> result)
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy (CustomParser.succeed ()))
 
 
 setIndent : Int -> CustomParser.Parser a -> CustomParser.Parser a

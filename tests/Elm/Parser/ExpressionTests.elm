@@ -1,6 +1,7 @@
 module Elm.Parser.ExpressionTests exposing (all)
 
-import Elm.Parser.Expression exposing (expression)
+import CustomParser
+import Elm.Parser.Expression exposing (positivelyIndentedExpression)
 import Elm.Parser.ParserWithCommentsTestUtil as ParserWithCommentsUtil
 import Elm.Syntax.Expression exposing (Expression(..))
 import Elm.Syntax.Infix as Infix exposing (InfixDirection(..))
@@ -787,14 +788,23 @@ x"""
 
 expectAst : Node Expression -> String -> Expect.Expectation
 expectAst =
-    ParserWithCommentsUtil.expectAst expression
+    ParserWithCommentsUtil.expectAst
+        (CustomParser.withIndent 0
+            positivelyIndentedExpression
+        )
 
 
 expectAstWithComments : { ast : Node Expression, comments : List (Node String) } -> String -> Expect.Expectation
 expectAstWithComments =
-    ParserWithCommentsUtil.expectAstWithComments expression
+    ParserWithCommentsUtil.expectAstWithComments
+        (CustomParser.withIndent 0
+            positivelyIndentedExpression
+        )
 
 
 expectInvalid : String -> Expect.Expectation
 expectInvalid =
-    ParserWithCommentsUtil.expectInvalid expression
+    ParserWithCommentsUtil.expectInvalid
+        (CustomParser.withIndent 0
+            positivelyIndentedExpression
+        )

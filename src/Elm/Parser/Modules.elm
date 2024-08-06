@@ -32,8 +32,10 @@ effectWhereClause =
         )
         Tokens.functionName
         (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "=")
-        Layout.maybeLayout
-        (Node.parserCore Tokens.typeName)
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parserCore Tokens.typeName)
+        )
 
 
 whereBlock : Parser (WithComments { command : Maybe (Node String), subscription : Maybe (Node String) })
@@ -70,8 +72,10 @@ effectWhereClauses =
             , syntax = whereResult.syntax
             }
         )
-        (CustomParser.keywordFollowedBy "where" Layout.maybeLayout)
-        whereBlock
+        (CustomParser.keywordFollowedBy "where" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            whereBlock
+        )
 
 
 effectModuleDefinition : Parser (WithComments Module)
@@ -94,13 +98,21 @@ effectModuleDefinition =
                     }
             }
         )
-        (CustomParser.keywordFollowedBy "effect" Layout.maybeLayout)
-        (CustomParser.keywordFollowedBy "module" Layout.maybeLayout)
-        moduleName
-        Layout.maybeLayout
-        effectWhereClauses
-        Layout.maybeLayout
-        (Node.parser exposeDefinition)
+        (CustomParser.keywordFollowedBy "effect" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            (CustomParser.keywordFollowedBy "module" Layout.optimisticLayout)
+        )
+        (Layout.positivelyIndentedFollowedBy
+            moduleName
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            effectWhereClauses
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parser exposeDefinition)
+        )
 
 
 normalModuleDefinition : Parser (WithComments Module)
@@ -118,10 +130,14 @@ normalModuleDefinition =
                     }
             }
         )
-        (CustomParser.keywordFollowedBy "module" Layout.maybeLayout)
-        moduleName
-        Layout.maybeLayout
-        (Node.parser exposeDefinition)
+        (CustomParser.keywordFollowedBy "module" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            moduleName
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parser exposeDefinition)
+        )
 
 
 portModuleDefinition : Parser (WithComments Module)
@@ -136,8 +152,14 @@ portModuleDefinition =
             , syntax = PortModule { moduleName = moduleName, exposingList = exposingList.syntax }
             }
         )
-        (CustomParser.keywordFollowedBy "port" Layout.maybeLayout)
-        (CustomParser.keywordFollowedBy "module" Layout.maybeLayout)
-        moduleName
-        Layout.maybeLayout
-        (Node.parser exposeDefinition)
+        (CustomParser.keywordFollowedBy "port" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            (CustomParser.keywordFollowedBy "module" Layout.optimisticLayout)
+        )
+        (Layout.positivelyIndentedFollowedBy
+            moduleName
+        )
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (Node.parser exposeDefinition)
+        )

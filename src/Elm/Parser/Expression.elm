@@ -1,4 +1,4 @@
-module Elm.Parser.Expression exposing (expression)
+module Elm.Parser.Expression exposing (positivelyIndentedExpression)
 
 import CustomParser exposing (Parser)
 import CustomParser.Advanced
@@ -75,9 +75,9 @@ andThenOneOf =
     ]
 
 
-expression : Parser (WithComments (Node Expression))
-expression =
-    subExpressionMap abovePrecedence0
+positivelyIndentedExpression : Parser (WithComments (Node Expression))
+positivelyIndentedExpression =
+    Layout.positivelyIndentedFollowedBy (subExpressionMap abovePrecedence0)
 
 
 recordAccess : ( Int, Parser (WithComments ExtensionRight) )
@@ -186,26 +186,30 @@ expressionAfterOpeningSquareBracket =
                     , syntax = elements.syntax
                     }
                 )
-                Layout.maybeLayout
-                (CustomParser.oneOf2
-                    (CustomParser.symbol "]" { comments = Rope.empty, syntax = ListExpr [] })
-                    (CustomParser.map4
-                        (\head commentsAfterHead tail () ->
-                            { comments =
-                                head.comments
-                                    |> Rope.prependTo commentsAfterHead
-                                    |> Rope.prependTo tail.comments
-                            , syntax = ListExpr (head.syntax :: tail.syntax)
-                            }
-                        )
-                        expression
-                        Layout.maybeLayout
-                        (ParserWithComments.many
-                            (CustomParser.symbolFollowedBy ","
-                                (Layout.maybeAroundBothSides expression)
+                Layout.optimisticLayout
+                (Layout.positivelyIndentedFollowedBy
+                    (CustomParser.oneOf2
+                        (CustomParser.symbol "]" { comments = Rope.empty, syntax = ListExpr [] })
+                        (CustomParser.map4
+                            (\head commentsAfterHead tail () ->
+                                { comments =
+                                    head.comments
+                                        |> Rope.prependTo commentsAfterHead
+                                        |> Rope.prependTo tail.comments
+                                , syntax = ListExpr (head.syntax :: tail.syntax)
+                                }
                             )
+                            positivelyIndentedExpression
+                            Layout.optimisticLayout
+                            (Layout.positivelyIndentedFollowedBy
+                                (ParserWithComments.many
+                                    (CustomParser.symbolFollowedBy ","
+                                        (Layout.maybeAroundBothSides positivelyIndentedExpression)
+                                    )
+                                )
+                            )
+                            Tokens.squareEnd
                         )
-                        Tokens.squareEnd
                     )
                 )
             )
@@ -226,8 +230,10 @@ recordExpression =
             , syntax = afterCurly.syntax
             }
         )
-        (CustomParser.symbolFollowedBy "{" Layout.maybeLayout)
-        recordContentsCurlyEnd
+        (CustomParser.symbolFollowedBy "{" Layout.optimisticLayout)
+        (Layout.positivelyIndentedFollowedBy
+            recordContentsCurlyEnd
+        )
         |> Node.parser
 
 
@@ -251,32 +257,36 @@ recordContentsCurlyEnd =
                 }
             )
             (Node.parserCore Tokens.functionName)
-            Layout.maybeLayout
-            (CustomParser.oneOf2
-                (CustomParser.map2
-                    (\commentsBefore setterResult ->
-                        { comments = commentsBefore |> Rope.prependTo setterResult.comments
-                        , syntax = RecordUpdateFirstSetter setterResult.syntax
-                        }
+            Layout.optimisticLayout
+            (Layout.positivelyIndentedFollowedBy
+                (CustomParser.oneOf2
+                    (CustomParser.map2
+                        (\commentsBefore setterResult ->
+                            { comments = commentsBefore |> Rope.prependTo setterResult.comments
+                            , syntax = RecordUpdateFirstSetter setterResult.syntax
+                            }
+                        )
+                        (CustomParser.symbolFollowedBy "|" Layout.optimisticLayout)
+                        (Layout.positivelyIndentedFollowedBy
+                            recordSetterNodeWithOptimisticLayout
+                        )
                     )
-                    (CustomParser.symbolFollowedBy "|" Layout.maybeLayout)
-                    recordSetterNodeWithLayout
-                )
-                (CustomParser.map3
-                    (\commentsBefore expressionResult commentsAfter ->
-                        { comments =
-                            commentsBefore
-                                |> Rope.prependTo expressionResult.comments
-                                |> Rope.prependTo commentsAfter
-                        , syntax = FieldsFirstValue expressionResult.syntax
-                        }
+                    (CustomParser.map3
+                        (\commentsBefore expressionResult commentsAfter ->
+                            { comments =
+                                commentsBefore
+                                    |> Rope.prependTo expressionResult.comments
+                                    |> Rope.prependTo commentsAfter
+                            , syntax = FieldsFirstValue expressionResult.syntax
+                            }
+                        )
+                        (CustomParser.symbolFollowedBy "=" Layout.optimisticLayout)
+                        positivelyIndentedExpression
+                        Layout.optimisticLayout
                     )
-                    (CustomParser.symbolFollowedBy "=" Layout.maybeLayout)
-                    expression
-                    Layout.maybeLayout
                 )
             )
-            recordFields
+            (Layout.positivelyIndentedFollowedBy recordFields)
             (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "}")
         )
         (CustomParser.symbol "}" { comments = Rope.empty, syntax = RecordExpr [] })
@@ -296,13 +306,15 @@ recordFields =
                 , syntax = setterResult.syntax
                 }
             )
-            (CustomParser.symbolFollowedBy "," Layout.maybeLayout)
-            recordSetterNodeWithLayout
+            (CustomParser.symbolFollowedBy "," Layout.optimisticLayout)
+            (Layout.positivelyIndentedFollowedBy
+                recordSetterNodeWithOptimisticLayout
+            )
         )
 
 
-recordSetterNodeWithLayout : Parser (WithComments (Node RecordSetter))
-recordSetterNodeWithLayout =
+recordSetterNodeWithOptimisticLayout : Parser (WithComments (Node RecordSetter))
+recordSetterNodeWithOptimisticLayout =
     Node.parser
         (CustomParser.map5
             (\name commentsAfterFunctionName commentsAfterEquals expressionResult commentsAfterExpression ->
@@ -317,11 +329,11 @@ recordSetterNodeWithLayout =
             )
             (Node.parserCore Tokens.functionName)
             (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "=")
-            Layout.maybeLayout
-            expression
+            Layout.optimisticLayout
+            positivelyIndentedExpression
             -- This extra whitespace is just included for compatibility with earlier version
             -- TODO for v8: remove
-            Layout.maybeLayout
+            Layout.optimisticLayout
         )
 
 
@@ -381,11 +393,13 @@ lambdaExpression =
                 , expression = expressionResult.syntax
                 }
             )
-            (CustomParser.symbolFollowedBy "\\" Layout.maybeLayout)
-            Patterns.patternNotDirectlyComposing
-            Layout.maybeLayout
+            (CustomParser.symbolFollowedBy "\\" Layout.optimisticLayout)
+            (Layout.positivelyIndentedFollowedBy
+                Patterns.patternNotDirectlyComposing
+            )
+            Layout.optimisticLayout
             (ParserWithComments.until
-                Tokens.arrowRight
+                (Layout.positivelyIndentedFollowedBy Tokens.arrowRight)
                 (CustomParser.map2
                     (\patternResult commentsAfter ->
                         { comments =
@@ -394,11 +408,11 @@ lambdaExpression =
                         , syntax = patternResult.syntax
                         }
                     )
-                    Patterns.patternNotDirectlyComposing
-                    Layout.maybeLayout
+                    (Layout.positivelyIndentedFollowedBy Patterns.patternNotDirectlyComposing)
+                    Layout.optimisticLayout
                 )
             )
-            expression
+            positivelyIndentedExpression
         )
 
 
@@ -450,11 +464,13 @@ caseExpression =
                 , lastToSecondCase = lastToSecondCase
                 }
             )
-            (CustomParser.keywordFollowedBy "case" Layout.maybeLayout)
-            expression
+            (CustomParser.keywordFollowedBy "case" Layout.optimisticLayout)
+            positivelyIndentedExpression
             (Layout.maybeLayoutUntilIgnored CustomParser.keywordFollowedBy "of")
-            Layout.maybeLayout
-            (CustomParser.withIndentSetToColumn caseStatements)
+            Layout.optimisticLayout
+            (Layout.positivelyIndentedFollowedBy
+                (CustomParser.withIndentSetToColumn caseStatements)
+            )
         )
 
 
@@ -476,8 +492,8 @@ caseStatements =
         )
         Patterns.pattern
         (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "->")
-        Layout.maybeLayout
-        expression
+        Layout.optimisticLayout
+        positivelyIndentedExpression
         (ParserWithComments.manyWithoutReverse caseStatement)
 
 
@@ -496,8 +512,8 @@ caseStatement =
             )
             Patterns.pattern
             (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "->")
-            Layout.maybeLayout
-            expression
+            Layout.optimisticLayout
+            positivelyIndentedExpression
         )
 
 
@@ -542,54 +558,56 @@ letExpression =
                         , syntax = declarations.syntax
                         }
                     )
-                    (CustomParser.keywordFollowedBy "let" Layout.maybeLayout)
-                    (CustomParser.withIndentSetToColumn letDeclarationsIn)
+                    (CustomParser.keywordFollowedBy "let" Layout.optimisticLayout)
+                    (Layout.positivelyIndentedFollowedBy
+                        (CustomParser.withIndentSetToColumn letDeclarationsIn)
+                    )
                 )
             )
             -- check that the `in` token used as the end parser in letDeclarationsIn is indented correctly
             (Layout.positivelyIndentedPlusFollowedBy 2
-                Layout.maybeLayout
+                Layout.optimisticLayout
             )
-            expression
+            positivelyIndentedExpression
         )
 
 
 letDeclarationsIn : Parser (WithComments (List (Node LetDeclaration)))
 letDeclarationsIn =
-    Layout.onTopIndentationFollowedBy
-        (CustomParser.map3
-            (\headLetResult commentsAfter tailLetResult ->
-                { comments =
-                    headLetResult.comments
-                        |> Rope.prependTo commentsAfter
-                        |> Rope.prependTo tailLetResult.comments
-                , syntax = headLetResult.syntax :: tailLetResult.syntax
-                }
-            )
+    CustomParser.map3
+        (\headLetResult commentsAfter tailLetResult ->
+            { comments =
+                headLetResult.comments
+                    |> Rope.prependTo commentsAfter
+                    |> Rope.prependTo tailLetResult.comments
+            , syntax = headLetResult.syntax :: tailLetResult.syntax
+            }
+        )
+        (Layout.onTopIndentationFollowedBy
             (CustomParser.oneOf2
                 letFunction
                 letDestructuringDeclaration
             )
-            Layout.optimisticLayout
-            (ParserWithComments.until Tokens.inToken blockElement)
         )
+        Layout.optimisticLayout
+        (ParserWithComments.until Tokens.inToken blockElement)
 
 
 blockElement : Parser (WithComments (Node LetDeclaration))
 blockElement =
-    Layout.onTopIndentationFollowedBy
-        (CustomParser.map2
-            (\letDeclarationResult commentsAfter ->
-                { comments = letDeclarationResult.comments |> Rope.prependTo commentsAfter
-                , syntax = letDeclarationResult.syntax
-                }
-            )
+    CustomParser.map2
+        (\letDeclarationResult commentsAfter ->
+            { comments = letDeclarationResult.comments |> Rope.prependTo commentsAfter
+            , syntax = letDeclarationResult.syntax
+            }
+        )
+        (Layout.onTopIndentationFollowedBy
             (CustomParser.oneOf2
                 letFunction
                 letDestructuringDeclaration
             )
-            Layout.optimisticLayout
         )
+        Layout.optimisticLayout
 
 
 letDestructuringDeclaration : Parser (WithComments (Node LetDeclaration))
@@ -614,9 +632,11 @@ letDestructuringDeclaration =
             }
         )
         Patterns.patternNotDirectlyComposing
-        Layout.maybeLayout
-        (CustomParser.symbolFollowedBy "=" Layout.maybeLayout)
-        expression
+        Layout.optimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (CustomParser.symbolFollowedBy "=" Layout.optimisticLayout)
+        )
+        positivelyIndentedExpression
 
 
 letFunction : Parser (WithComments (Node LetDeclaration))
@@ -698,7 +718,7 @@ letFunction =
                             ("Expected to find the declaration for " ++ startName ++ " but found " ++ implementationName)
         )
         (Node.parserCore Tokens.functionName)
-        Layout.maybeLayout
+        Layout.optimisticLayout
         (CustomParser.orSucceed
             (CustomParser.map4
                 (\commentsBeforeTypeAnnotation typeAnnotationResult implementationName afterImplementationName ->
@@ -712,32 +732,35 @@ letFunction =
                         , typeAnnotation = typeAnnotationResult.syntax
                         }
                 )
-                (CustomParser.symbolFollowedBy ":" Layout.maybeLayout)
-                TypeAnnotation.typeAnnotation
+                (CustomParser.symbolFollowedBy ":" Layout.optimisticLayout)
+                (Layout.positivelyIndentedFollowedBy
+                    TypeAnnotation.typeAnnotation
+                )
                 (Layout.layoutStrictFollowedBy
                     (Node.parserCore Tokens.functionName)
                 )
-                Layout.maybeLayout
+                Layout.optimisticLayout
             )
             Nothing
         )
-        parameterPatternsEqual
-        Layout.maybeLayout
-        expression
+        (Layout.positivelyIndentedFollowedBy parameterPatternsEqual)
+        Layout.optimisticLayout
+        positivelyIndentedExpression
         |> CustomParser.andThen identity
 
 
 parameterPatternsEqual : Parser (WithComments (List (Node Pattern)))
 parameterPatternsEqual =
-    ParserWithComments.until Tokens.equal
+    ParserWithComments.until
+        (Layout.positivelyIndentedFollowedBy Tokens.equal)
         (CustomParser.map2
             (\patternResult commentsAfterPattern ->
                 { comments = patternResult.comments |> Rope.prependTo commentsAfterPattern
                 , syntax = patternResult.syntax
                 }
             )
-            Patterns.patternNotDirectlyComposing
-            Layout.maybeLayout
+            (Layout.positivelyIndentedFollowedBy Patterns.patternNotDirectlyComposing)
+            Layout.optimisticLayout
         )
 
 
@@ -790,14 +813,16 @@ ifBlockExpression =
                 , ifTrue = ifTrue.syntax
                 }
             )
-            (CustomParser.keywordFollowedBy "if" Layout.maybeLayout)
-            expression
+            (Layout.positivelyIndentedFollowedBy
+                (CustomParser.keywordFollowedBy "if" Layout.optimisticLayout)
+            )
+            positivelyIndentedExpression
             (Layout.maybeLayoutUntilIgnored CustomParser.keywordFollowedBy "then")
-            Layout.maybeLayout
-            expression
+            Layout.optimisticLayout
+            positivelyIndentedExpression
             (Layout.maybeLayoutUntilIgnored CustomParser.keywordFollowedBy "else")
-            Layout.maybeLayout
-            expression
+            Layout.optimisticLayout
+            positivelyIndentedExpression
         )
 
 
@@ -980,10 +1005,10 @@ tupledExpressionInnerAfterOpeningParens =
                         , syntax = TupledExpression (firstPart.syntax :: List.reverse tailPartsReverse.syntax)
                         }
             )
-            expression
-            Layout.maybeLayout
+            positivelyIndentedExpression
+            Layout.optimisticLayout
             (ParserWithComments.untilWithoutReverse
-                Tokens.parensEnd
+                (Layout.positivelyIndentedFollowedBy Tokens.parensEnd)
                 (CustomParser.map3
                     (\commentsBefore partResult commentsAfter ->
                         { comments =
@@ -993,9 +1018,11 @@ tupledExpressionInnerAfterOpeningParens =
                         , syntax = partResult.syntax
                         }
                     )
-                    (CustomParser.symbolFollowedBy "," Layout.maybeLayout)
-                    expression
-                    Layout.maybeLayout
+                    (Layout.positivelyIndentedFollowedBy
+                        (CustomParser.symbolFollowedBy "," Layout.optimisticLayout)
+                    )
+                    positivelyIndentedExpression
+                    Layout.optimisticLayout
                 )
             )
         )

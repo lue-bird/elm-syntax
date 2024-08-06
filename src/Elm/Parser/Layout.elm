@@ -4,7 +4,6 @@ module Elm.Parser.Layout exposing
     , layoutStrictFollowedByComments
     , layoutStrictFollowedByWithComments
     , maybeAroundBothSides
-    , maybeLayout
     , maybeLayoutUntilIgnored
     , moduleLevelIndentationFollowedBy
     , onTopIndentationFollowedBy
@@ -138,14 +137,8 @@ fromSingleLineCommentNode =
         whitespaceAndCommentsOrEmpty
 
 
-maybeLayout : Parser Comments
-maybeLayout =
-    whitespaceAndCommentsOrEmpty
-        |> CustomParser.ignore (positivelyIndentedFollowedBy (CustomParser.succeed ()))
-
-
 {-| Check that the indentation of an already parsed token
-would be valid after [`maybeLayout`](#maybeLayout)
+would be valid after [`positivelyIndentedFollowedBy`](#positivelyIndentedFollowedBy)
 -}
 positivelyIndentedPlusFollowedBy : Int -> Parser a -> Parser a
 positivelyIndentedPlusFollowedBy extraIndent nextParser =
@@ -256,8 +249,8 @@ problemTopIndentation =
 
 maybeAroundBothSides : Parser (WithComments b) -> Parser (WithComments b)
 maybeAroundBothSides x =
-    CustomParser.map3
-        (\before v after ->
+    CustomParser.map4
+        (\before v after () ->
             { comments =
                 before
                     |> Rope.prependTo v.comments
@@ -265,6 +258,7 @@ maybeAroundBothSides x =
             , syntax = v.syntax
             }
         )
-        maybeLayout
-        x
-        maybeLayout
+        optimisticLayout
+        (positivelyIndentedFollowedBy x)
+        optimisticLayout
+        (positivelyIndentedFollowedBy (CustomParser.succeed ()))

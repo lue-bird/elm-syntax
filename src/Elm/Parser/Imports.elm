@@ -76,8 +76,10 @@ importDefinition =
                     }
                 }
             )
-            (CustomParser.keywordFollowedBy "import" Layout.maybeLayout)
-            moduleName
+            (CustomParser.keywordFollowedBy "import" Layout.optimisticLayout)
+            (Layout.positivelyIndentedFollowedBy
+                moduleName
+            )
             Layout.optimisticLayout
             (CustomParser.orSucceed
                 (CustomParser.map3
@@ -87,13 +89,15 @@ importDefinition =
                             , syntax = moduleAliasNode
                             }
                     )
-                    (CustomParser.keywordFollowedBy "as" Layout.maybeLayout)
-                    (CustomParser.mapWithStartAndEndPosition
-                        (\start moduleAlias end ->
-                            Node { start = start, end = end }
-                                [ moduleAlias ]
+                    (CustomParser.keywordFollowedBy "as" Layout.optimisticLayout)
+                    (Layout.positivelyIndentedFollowedBy
+                        (CustomParser.mapWithStartAndEndPosition
+                            (\start moduleAlias end ->
+                                Node { start = start, end = end }
+                                    [ moduleAlias ]
+                            )
+                            Tokens.typeName
                         )
-                        Tokens.typeName
                     )
                     Layout.optimisticLayout
                 )

@@ -1,6 +1,7 @@
 module Elm.WriterTests exposing (suite)
 
-import Elm.Parser.Expression exposing (expression)
+import CustomParser
+import Elm.Parser.Expression exposing (positivelyIndentedExpression)
 import Elm.Parser.ParserWithCommentsTestUtil exposing (parse)
 import Elm.Syntax.Declaration exposing (..)
 import Elm.Syntax.Exposing exposing (..)
@@ -75,7 +76,10 @@ suite =
                         input =
                             "(.spaceEvenly Internal.Style.classes)"
                     in
-                    parse input expression
+                    parse input
+                        (CustomParser.withIndent 0
+                            positivelyIndentedExpression
+                        )
                         |> Maybe.map Writer.writeExpression
                         |> Maybe.map Writer.write
                         |> Expect.equal

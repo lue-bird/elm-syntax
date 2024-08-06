@@ -24,11 +24,10 @@ pattern =
 
 composablePatternTryToCompose : Parser (WithComments (Node Pattern))
 composablePatternTryToCompose =
-    CustomParser.map3
-        (\x commentsAfterLeft maybeComposedWithResult ->
+    CustomParser.map2
+        (\x maybeComposedWithResult ->
             { comments =
                 x.comments
-                    |> Rope.prependTo commentsAfterLeft
                     |> Rope.prependTo maybeComposedWithResult.comments
             , syntax =
                 case maybeComposedWithResult.syntax of
@@ -43,71 +42,72 @@ composablePatternTryToCompose =
             }
         )
         composablePattern
-        Layout.maybeLayout
-        maybeComposedWith
+        (Layout.maybeLayoutFollowedByWithComments
+            maybeComposedWith
+        )
 
 
-maybeComposedWith : Parser { comments : ParserWithComments.Comments, syntax : PatternComposedWith }
+maybeComposedWith : Parser (WithComments PatternComposedWith)
 maybeComposedWith =
     CustomParser.oneOf
-        [ CustomParser.map2
-            (\commentsAfterAs name ->
-                { comments = commentsAfterAs
-                , syntax = PatternComposedWithAs name
+        [ CustomParser.map
+            (\name ->
+                { comments = name.comments
+                , syntax = PatternComposedWithAs name.syntax
                 }
             )
-            (CustomParser.keywordFollowedBy "as" Layout.maybeLayout)
-            (Node.parserCore Tokens.functionName)
-        , CustomParser.map2
-            (\commentsAfterCons patternResult ->
-                { comments = patternResult.comments |> Rope.prependTo commentsAfterCons
+            (CustomParser.keywordFollowedBy "as"
+                (Layout.maybeLayoutFollowedBy
+                    (Node.parserCore Tokens.functionName)
+                )
+            )
+        , CustomParser.map
+            (\patternResult ->
+                { comments = patternResult.comments
                 , syntax = PatternComposedWithCons patternResult.syntax
                 }
             )
-            (CustomParser.symbolFollowedBy "::" Layout.maybeLayout)
-            pattern
+            (CustomParser.symbolFollowedBy "::"
+                (Layout.maybeLayoutFollowedByWithComments
+                    pattern
+                )
+            )
         , CustomParser.succeed { comments = Rope.empty, syntax = PatternComposedWithNothing () }
         ]
 
 
 parensPattern : Parser (WithComments (Node Pattern))
 parensPattern =
-    CustomParser.map2
-        (\commentsBeforeHead contentResult ->
-            { comments =
-                commentsBeforeHead
-                    |> Rope.prependTo contentResult.comments
-            , syntax = contentResult.syntax
-            }
-        )
-        (CustomParser.symbolFollowedBy "(" Layout.maybeLayout)
-        -- yes, (  ) is a valid pattern but not a valid type or expression
-        (CustomParser.oneOf2
-            (CustomParser.map3
-                (\headResult commentsAfterHead tailResult ->
-                    { comments =
-                        headResult.comments
-                            |> Rope.prependTo commentsAfterHead
-                            |> Rope.prependTo tailResult.comments
-                    , syntax =
-                        case tailResult.syntax of
-                            [] ->
-                                ParenthesizedPattern headResult.syntax
+    CustomParser.symbolFollowedBy "("
+        (Layout.maybeLayoutFollowedByWithComments
+            -- yes, (  ) is a valid pattern but not a valid type or expression
+            (CustomParser.oneOf2
+                (CustomParser.map2
+                    (\headResult tailResult ->
+                        { comments =
+                            headResult.comments
+                                |> Rope.prependTo tailResult.comments
+                        , syntax =
+                            case tailResult.syntax of
+                                [] ->
+                                    ParenthesizedPattern headResult.syntax
 
-                            _ ->
-                                TuplePattern (headResult.syntax :: tailResult.syntax)
-                    }
-                )
-                pattern
-                Layout.maybeLayout
-                (ParserWithComments.until
-                    Tokens.parensEnd
-                    (CustomParser.symbolFollowedBy ","
-                        (Layout.maybeAroundBothSides pattern)
+                                _ ->
+                                    TuplePattern (headResult.syntax :: tailResult.syntax)
+                        }
+                    )
+                    pattern
+                    (Layout.maybeLayoutFollowedByWithComments
+                        (ParserWithComments.until
+                            Tokens.parensEnd
+                            (CustomParser.symbolFollowedBy ","
+                                (Layout.maybeAroundBothSides pattern)
+                            )
+                        )
                     )
                 )
+                (CustomParser.symbol ")" { comments = Rope.empty, syntax = UnitPattern })
             )
-            (CustomParser.symbol ")" { comments = Rope.empty, syntax = UnitPattern })
         )
         |> Node.parser
 
@@ -143,48 +143,34 @@ charPattern =
 
 listPattern : Parser (WithComments (Node Pattern))
 listPattern =
-    CustomParser.map2
-        (\commentsBeforeElements maybeElements ->
-            case maybeElements of
-                Nothing ->
-                    { comments = commentsBeforeElements
-                    , syntax = patternListEmpty
+    CustomParser.symbolFollowedBy "["
+        (Layout.maybeLayoutFollowedByWithComments
+            (CustomParser.oneOf2
+                (CustomParser.symbol "]"
+                    { comments = Rope.empty
+                    , syntax = ListPattern []
                     }
-
-                Just elements ->
-                    { comments = commentsBeforeElements |> Rope.prependTo elements.comments
-                    , syntax = ListPattern elements.syntax
-                    }
-        )
-        (CustomParser.symbolFollowedBy "[" Layout.maybeLayout)
-        (CustomParser.oneOf2
-            (CustomParser.symbol "]" Nothing)
-            (CustomParser.map4
-                (\head commentsAfterHead tail () ->
-                    Just
+                )
+                (CustomParser.map3
+                    (\head tail () ->
                         { comments =
-                            head.comments
-                                |> Rope.prependTo tail.comments
-                                |> Rope.prependTo commentsAfterHead
-                        , syntax = head.syntax :: tail.syntax
+                            head.comments |> Rope.prependTo tail.comments
+                        , syntax = ListPattern (head.syntax :: tail.syntax)
                         }
-                )
-                pattern
-                Layout.maybeLayout
-                (ParserWithComments.many
-                    (CustomParser.symbolFollowedBy ","
-                        (Layout.maybeAroundBothSides pattern)
                     )
+                    pattern
+                    (Layout.maybeLayoutFollowedByWithComments
+                        (ParserWithComments.many
+                            (CustomParser.symbolFollowedBy ","
+                                (Layout.maybeAroundBothSides pattern)
+                            )
+                        )
+                    )
+                    Tokens.squareEnd
                 )
-                Tokens.squareEnd
             )
         )
         |> Node.parser
-
-
-patternListEmpty : Pattern
-patternListEmpty =
-    ListPattern []
 
 
 composablePattern : Parser (WithComments (Node Pattern))
@@ -319,51 +305,40 @@ qualifiedPatternWithoutConsumeArgs =
 
 recordPattern : Parser (WithComments (Node Pattern))
 recordPattern =
-    CustomParser.map2
-        (\commentsBeforeElements maybeElements ->
-            case maybeElements of
-                Nothing ->
-                    { comments = commentsBeforeElements
-                    , syntax = patternRecordEmpty
-                    }
-
-                Just elements ->
-                    { comments = commentsBeforeElements |> Rope.prependTo elements.comments
-                    , syntax = RecordPattern elements.syntax
-                    }
-        )
-        (CustomParser.symbolFollowedBy "{" Layout.maybeLayout)
-        (CustomParser.oneOf2
-            (CustomParser.map4
-                (\head commentsAfterHead tail () ->
-                    Just
-                        { comments =
-                            commentsAfterHead
-                                |> Rope.prependTo tail.comments
-                        , syntax = head :: tail.syntax
+    CustomParser.symbolFollowedBy "{"
+        (Layout.maybeLayoutFollowedByWithComments
+            (CustomParser.oneOf2
+                (CustomParser.map3
+                    (\head tail () ->
+                        { comments = tail.comments
+                        , syntax = RecordPattern (head :: tail.syntax)
                         }
-                )
-                (Node.parserCore Tokens.functionName)
-                Layout.maybeLayout
-                (ParserWithComments.many
-                    (CustomParser.map3
-                        (\beforeName name afterName ->
-                            { comments = beforeName |> Rope.prependTo afterName
-                            , syntax = name
-                            }
-                        )
-                        (CustomParser.symbolFollowedBy "," Layout.maybeLayout)
-                        (Node.parserCore Tokens.functionName)
-                        Layout.maybeLayout
                     )
+                    (Node.parserCore Tokens.functionName)
+                    (Layout.maybeLayoutFollowedByWithComments
+                        (ParserWithComments.many
+                            (CustomParser.map2
+                                (\name afterName ->
+                                    { comments = name.comments |> Rope.prependTo afterName
+                                    , syntax = name.syntax
+                                    }
+                                )
+                                (CustomParser.symbolFollowedBy ","
+                                    (Layout.maybeLayoutFollowedBy
+                                        (Node.parserCore Tokens.functionName)
+                                    )
+                                )
+                                Layout.maybeLayout
+                            )
+                        )
+                    )
+                    Tokens.curlyEnd
                 )
-                Tokens.curlyEnd
+                (CustomParser.symbol "}"
+                    { comments = Rope.empty
+                    , syntax = RecordPattern []
+                    }
+                )
             )
-            (CustomParser.symbol "}" Nothing)
         )
         |> Node.parser
-
-
-patternRecordEmpty : Pattern
-patternRecordEmpty =
-    RecordPattern []

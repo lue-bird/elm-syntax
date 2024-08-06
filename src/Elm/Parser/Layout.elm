@@ -5,6 +5,8 @@ module Elm.Parser.Layout exposing
     , layoutStrictFollowedByWithComments
     , maybeAroundBothSides
     , maybeLayout
+    , maybeLayoutFollowedBy
+    , maybeLayoutFollowedByWithComments
     , maybeLayoutUntilIgnored
     , moduleLevelIndentationFollowedBy
     , onTopIndentationFollowedBy
@@ -138,10 +140,35 @@ fromSingleLineCommentNode =
         whitespaceAndCommentsOrEmpty
 
 
+maybeLayoutFollowedByWithComments : Parser (WithComments a) -> Parser (WithComments a)
+maybeLayoutFollowedByWithComments nextParser =
+    CustomParser.map2
+        (\commentsBefore after ->
+            { comments = commentsBefore |> Rope.prependTo after.comments
+            , syntax = after.syntax
+            }
+        )
+        whitespaceAndCommentsOrEmpty
+        (positivelyIndentedFollowedBy nextParser)
+
+
+maybeLayoutFollowedBy : Parser a -> Parser (WithComments a)
+maybeLayoutFollowedBy nextParser =
+    CustomParser.map2
+        (\commentsBefore after ->
+            { comments = commentsBefore
+            , syntax = after
+            }
+        )
+        whitespaceAndCommentsOrEmpty
+        (positivelyIndentedFollowedBy nextParser)
+
+
 maybeLayout : Parser Comments
 maybeLayout =
-    whitespaceAndCommentsOrEmpty
-        |> CustomParser.ignore (positivelyIndentedFollowedBy (CustomParser.succeed ()))
+    CustomParser.map2 (\comments () -> comments)
+        whitespaceAndCommentsOrEmpty
+        (positivelyIndentedFollowedBy (CustomParser.succeed ()))
 
 
 {-| Check that the indentation of an already parsed token

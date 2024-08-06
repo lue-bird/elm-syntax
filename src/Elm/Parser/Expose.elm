@@ -33,24 +33,21 @@ exposeDefinition =
 exposingListInner : Parser (WithComments Exposing)
 exposingListInner =
     CustomParser.oneOf2
-        (CustomParser.map3
-            (\headElement commentsAfterHeadElement tailElements ->
+        (CustomParser.map2
+            (\headElement tailElements ->
                 { comments =
                     headElement.comments
-                        |> Rope.prependTo commentsAfterHeadElement
                         |> Rope.prependTo tailElements.comments
                 , syntax =
-                    Explicit
-                        (headElement.syntax
-                            :: tailElements.syntax
-                        )
+                    Explicit (headElement.syntax :: tailElements.syntax)
                 }
             )
             exposable
-            Layout.maybeLayout
-            (ParserWithComments.many
-                (CustomParser.symbolFollowedBy ","
-                    (Layout.maybeAroundBothSides exposable)
+            (Layout.maybeLayoutFollowedByWithComments
+                (ParserWithComments.many
+                    (CustomParser.symbolFollowedBy ","
+                        (Layout.maybeAroundBothSides exposable)
+                    )
                 )
             )
         )

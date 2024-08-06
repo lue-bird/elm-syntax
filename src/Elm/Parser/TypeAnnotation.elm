@@ -26,12 +26,11 @@ typeAnnotation =
         )
         (CustomParser.lazy (\() -> typeAnnotationNoFnIncludingTypedWithArguments))
         (CustomParser.orSucceed
-            (CustomParser.map3
-                (\commentsBeforeArrow commentsAfterArrow typeAnnotationResult ->
+            (CustomParser.map2
+                (\commentsBeforeArrow typeAnnotationResult ->
                     Just
                         { comments =
                             commentsBeforeArrow
-                                |> Rope.prependTo commentsAfterArrow
                                 |> Rope.prependTo typeAnnotationResult.comments
                         , syntax = typeAnnotationResult.syntax
                         }
@@ -39,8 +38,9 @@ typeAnnotation =
                 (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy "->"
                     |> CustomParser.backtrackable
                 )
-                Layout.maybeLayout
-                (CustomParser.lazy (\() -> typeAnnotation))
+                (Layout.maybeLayoutFollowedByWithComments
+                    (CustomParser.lazy (\() -> typeAnnotation))
+                )
             )
             Nothing
         )
@@ -71,12 +71,10 @@ parensTypeAnnotation =
     CustomParser.symbolFollowedBy "("
         (CustomParser.oneOf2
             (CustomParser.symbol ")" { comments = Rope.empty, syntax = TypeAnnotation.Unit })
-            (CustomParser.map4
-                (\commentsBeforeFirstPart firstPart commentsAfterFirstPart lastToSecondPart ->
+            (CustomParser.map2
+                (\firstPart lastToSecondPart ->
                     { comments =
-                        commentsBeforeFirstPart
-                            |> Rope.prependTo firstPart.comments
-                            |> Rope.prependTo commentsAfterFirstPart
+                        firstPart.comments
                             |> Rope.prependTo lastToSecondPart.comments
                     , syntax =
                         case lastToSecondPart.syntax of
@@ -91,23 +89,27 @@ parensTypeAnnotation =
                                 TypeAnnotation.Tupled (firstPart.syntax :: List.reverse lastToSecondPart.syntax)
                     }
                 )
-                Layout.maybeLayout
-                typeAnnotation
-                Layout.maybeLayout
-                (ParserWithComments.untilWithoutReverse
-                    Tokens.parensEnd
-                    (CustomParser.map3
-                        (\commentsBefore typeAnnotationResult commentsAfter ->
-                            { comments =
-                                commentsBefore
-                                    |> Rope.prependTo typeAnnotationResult.comments
-                                    |> Rope.prependTo commentsAfter
-                            , syntax = typeAnnotationResult.syntax
-                            }
+                (Layout.maybeLayoutFollowedByWithComments
+                    typeAnnotation
+                )
+                (Layout.maybeLayoutFollowedByWithComments
+                    (ParserWithComments.untilWithoutReverse
+                        Tokens.parensEnd
+                        (CustomParser.map2
+                            (\typeAnnotationResult commentsAfter ->
+                                { comments =
+                                    typeAnnotationResult.comments
+                                        |> Rope.prependTo commentsAfter
+                                , syntax = typeAnnotationResult.syntax
+                                }
+                            )
+                            (CustomParser.symbolFollowedBy ","
+                                (Layout.maybeLayoutFollowedByWithComments
+                                    typeAnnotation
+                                )
+                            )
+                            Layout.maybeLayout
                         )
-                        (CustomParser.symbolFollowedBy "," Layout.maybeLayout)
-                        typeAnnotation
-                        Layout.maybeLayout
                     )
                 )
             )
@@ -130,29 +132,12 @@ genericTypeAnnotation =
 
 recordTypeAnnotation : Parser (WithComments (Node TypeAnnotation))
 recordTypeAnnotation =
-    CustomParser.map2
-        (\commentsBefore afterCurly ->
-            case afterCurly of
-                Nothing ->
-                    { comments = commentsBefore
-                    , syntax = typeAnnotationRecordEmpty
-                    }
-
-                Just afterCurlyResult ->
-                    { comments =
-                        commentsBefore
-                            |> Rope.prependTo afterCurlyResult.comments
-                    , syntax = afterCurlyResult.syntax
-                    }
-        )
-        (CustomParser.symbolFollowedBy "{" Layout.maybeLayout)
-        (CustomParser.oneOf2
-            (CustomParser.map4
-                (\firstNameNode commentsAfterFirstName afterFirstName () ->
-                    Just
-                        { comments =
-                            commentsAfterFirstName
-                                |> Rope.prependTo afterFirstName.comments
+    CustomParser.symbolFollowedBy "{"
+        (Layout.maybeLayoutFollowedByWithComments
+            (CustomParser.oneOf2
+                (CustomParser.map3
+                    (\firstNameNode afterFirstName () ->
+                        { comments = afterFirstName.comments
                         , syntax =
                             case afterFirstName.syntax of
                                 RecordExtensionExpressionAfterName fields ->
@@ -161,53 +146,56 @@ recordTypeAnnotation =
                                 FieldsAfterName fieldsAfterName ->
                                     TypeAnnotation.Record (Node.combine Tuple.pair firstNameNode fieldsAfterName.firstFieldValue :: fieldsAfterName.tailFields)
                         }
-                )
-                (Node.parserCore Tokens.functionName)
-                Layout.maybeLayout
-                (CustomParser.oneOf2
-                    (CustomParser.map
-                        (\extension ->
-                            { comments = extension.comments
-                            , syntax = RecordExtensionExpressionAfterName extension.syntax
-                            }
-                        )
-                        (CustomParser.symbolFollowedBy "|"
-                            (Node.parser recordFieldsTypeAnnotation)
-                        )
                     )
-                    (CustomParser.map4
-                        (\commentsBeforeFirstFieldValue firstFieldValue commentsAfterFirstFieldValue tailFields ->
-                            { comments =
-                                commentsBeforeFirstFieldValue
-                                    |> Rope.prependTo firstFieldValue.comments
-                                    |> Rope.prependTo commentsAfterFirstFieldValue
-                                    |> Rope.prependTo tailFields.comments
-                            , syntax =
-                                FieldsAfterName
-                                    { firstFieldValue = firstFieldValue.syntax
-                                    , tailFields = tailFields.syntax
+                    (Node.parserCore Tokens.functionName)
+                    (Layout.maybeLayoutFollowedByWithComments
+                        (CustomParser.oneOf2
+                            (CustomParser.map
+                                (\extension ->
+                                    { comments = extension.comments
+                                    , syntax = RecordExtensionExpressionAfterName extension.syntax
                                     }
-                            }
-                        )
-                        (CustomParser.symbolFollowedBy ":" Layout.maybeLayout)
-                        typeAnnotation
-                        Layout.maybeLayout
-                        (CustomParser.orSucceed
-                            (CustomParser.symbolFollowedBy "," recordFieldsTypeAnnotation)
-                            { comments = Rope.empty, syntax = [] }
+                                )
+                                (CustomParser.symbolFollowedBy "|"
+                                    (Node.parser recordFieldsTypeAnnotation)
+                                )
+                            )
+                            (CustomParser.map2
+                                (\firstFieldValue tailFields ->
+                                    { comments =
+                                        firstFieldValue.comments
+                                            |> Rope.prependTo tailFields.comments
+                                    , syntax =
+                                        FieldsAfterName
+                                            { firstFieldValue = firstFieldValue.syntax
+                                            , tailFields = tailFields.syntax
+                                            }
+                                    }
+                                )
+                                (CustomParser.symbolFollowedBy ":"
+                                    (Layout.maybeLayoutFollowedByWithComments
+                                        typeAnnotation
+                                    )
+                                )
+                                (Layout.maybeLayoutFollowedByWithComments
+                                    (CustomParser.orSucceed
+                                        (CustomParser.symbolFollowedBy "," recordFieldsTypeAnnotation)
+                                        { comments = Rope.empty, syntax = [] }
+                                    )
+                                )
+                            )
                         )
                     )
+                    Tokens.curlyEnd
                 )
-                Tokens.curlyEnd
+                (CustomParser.symbol "}"
+                    { comments = Rope.empty
+                    , syntax = TypeAnnotation.Record []
+                    }
+                )
             )
-            (CustomParser.symbol "}" Nothing)
         )
         |> Node.parser
-
-
-typeAnnotationRecordEmpty : TypeAnnotation
-typeAnnotationRecordEmpty =
-    TypeAnnotation.Record []
 
 
 type RecordFieldsOrExtensionAfterName
@@ -218,35 +206,30 @@ type RecordFieldsOrExtensionAfterName
 recordFieldsTypeAnnotation : Parser (WithComments TypeAnnotation.RecordDefinition)
 recordFieldsTypeAnnotation =
     ParserWithComments.sepBy1 ","
-        (CustomParser.map2
-            (\commentsBefore fields ->
-                { comments = commentsBefore |> Rope.prependTo fields.comments
-                , syntax = fields.syntax
-                }
-            )
-            Layout.maybeLayout
+        (Layout.maybeLayoutFollowedByWithComments
             (Node.parser recordFieldDefinition)
         )
 
 
 recordFieldDefinition : Parser (WithComments TypeAnnotation.RecordField)
 recordFieldDefinition =
-    CustomParser.map6
-        (\commentsBeforeFunctionName name commentsAfterFunctionName commentsAfterColon value commentsAfterValue ->
+    CustomParser.map4
+        (\name commentsAfterFunctionName value commentsAfterValue ->
             { comments =
-                commentsBeforeFunctionName
+                name.comments
                     |> Rope.prependTo commentsAfterFunctionName
-                    |> Rope.prependTo commentsAfterColon
                     |> Rope.prependTo value.comments
                     |> Rope.prependTo commentsAfterValue
-            , syntax = ( name, value.syntax )
+            , syntax = ( name.syntax, value.syntax )
             }
         )
-        Layout.maybeLayout
-        (Node.parserCore Tokens.functionName)
+        (Layout.maybeLayoutFollowedBy
+            (Node.parserCore Tokens.functionName)
+        )
         (Layout.maybeLayoutUntilIgnored CustomParser.symbolFollowedBy ":")
-        Layout.maybeLayout
-        typeAnnotation
+        (Layout.maybeLayoutFollowedByWithComments
+            typeAnnotation
+        )
         -- This extra whitespace is just included for compatibility with earlier version
         -- TODO for v8: move to recordFieldsTypeAnnotation
         Layout.maybeLayout

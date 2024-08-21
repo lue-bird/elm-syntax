@@ -75,7 +75,7 @@ form, allowing you to switch over pretty easily.
 
 -}
 type Parser problem value
-    = Parser (State -> PStep problem value)
+    = Parser (String -> State -> Int -> PStep problem value)
 
 
 type PStep problem value
@@ -84,9 +84,7 @@ type PStep problem value
 
 
 type alias State =
-    { src : String
-    , offset : Int
-    , indent : Int
+    { offset : Int
     , row : Int
     , col : Int
     }
@@ -102,7 +100,7 @@ for each dead end.
 -}
 run : Parser x a -> String -> Result (List (DeadEnd x)) a
 run (Parser parse) src =
-    case parse { src = src, offset = 0, indent = 1, row = 1, col = 1 } of
+    case parse src { offset = 0, row = 1, col = 1 } 1 of
         Good _ value _ ->
             Ok value
 
@@ -176,19 +174,19 @@ ropeFilledToList ropeFilled list =
 
 succeed : a -> Parser x a
 succeed a =
-    Parser (\s -> Good False a s)
+    Parser (\_ s _ -> Good False a s)
 
 
 problem : x -> Parser x a
 problem x =
-    Parser (\s -> Bad False (fromState s x) ())
+    Parser (\_ s _ -> Bad False (fromState s x) ())
 
 
 map : (a -> b) -> Parser x a -> Parser x b
 map func (Parser parse) =
     Parser
-        (\s0 ->
-            case parse s0 of
+        (\src s0 indent ->
+            case parse src s0 indent of
                 Good committed a s1 ->
                     Good committed (func a) s1
 
@@ -200,13 +198,13 @@ map func (Parser parse) =
 map2 : (a -> b -> value) -> Parser x a -> Parser x b -> Parser x value
 map2 func (Parser parseA) (Parser parseB) =
     Parser
-        (\s0 ->
-            case parseA s0 of
+        (\src s0 indent ->
+            case parseA src s0 indent of
                 Bad committed x () ->
                     Bad committed x ()
 
                 Good c1 a s1 ->
-                    case parseB s1 of
+                    case parseB src s1 indent of
                         Bad c2 x () ->
                             Bad (c1 || c2) x ()
 
@@ -218,18 +216,18 @@ map2 func (Parser parseA) (Parser parseB) =
 map3 : (a -> b -> c -> value) -> Parser x a -> Parser x b -> Parser x c -> Parser x value
 map3 func (Parser parseA) (Parser parseB) (Parser parseC) =
     Parser
-        (\s0 ->
-            case parseA s0 of
+        (\src s0 indent ->
+            case parseA src s0 indent of
                 Bad committed x () ->
                     Bad committed x ()
 
                 Good c1 a s1 ->
-                    case parseB s1 of
+                    case parseB src s1 indent of
                         Bad c2 x () ->
                             Bad (c1 || c2) x ()
 
                         Good c2 b s2 ->
-                            case parseC s2 of
+                            case parseC src s2 indent of
                                 Bad c3 x () ->
                                     Bad (c1 || c2 || c3) x ()
 
@@ -241,23 +239,23 @@ map3 func (Parser parseA) (Parser parseB) (Parser parseC) =
 map4 : (a -> b -> c -> d -> value) -> Parser x a -> Parser x b -> Parser x c -> Parser x d -> Parser x value
 map4 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) =
     Parser
-        (\s0 ->
-            case parseA s0 of
+        (\src s0 indent ->
+            case parseA src s0 indent of
                 Bad committed x () ->
                     Bad committed x ()
 
                 Good c1 a s1 ->
-                    case parseB s1 of
+                    case parseB src s1 indent of
                         Bad c2 x () ->
                             Bad (c1 || c2) x ()
 
                         Good c2 b s2 ->
-                            case parseC s2 of
+                            case parseC src s2 indent of
                                 Bad c3 x () ->
                                     Bad (c1 || c2 || c3) x ()
 
                                 Good c3 c s3 ->
-                                    case parseD s3 of
+                                    case parseD src s3 indent of
                                         Bad c4 x () ->
                                             Bad (c1 || c2 || c3 || c4) x ()
 
@@ -269,28 +267,28 @@ map4 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) =
 map5 : (a -> b -> c -> d -> e -> value) -> Parser x a -> Parser x b -> Parser x c -> Parser x d -> Parser x e -> Parser x value
 map5 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) (Parser parseE) =
     Parser
-        (\s0 ->
-            case parseA s0 of
+        (\src s0 indent ->
+            case parseA src s0 indent of
                 Bad committed x () ->
                     Bad committed x ()
 
                 Good c1 a s1 ->
-                    case parseB s1 of
+                    case parseB src s1 indent of
                         Bad c2 x () ->
                             Bad (c1 || c2) x ()
 
                         Good c2 b s2 ->
-                            case parseC s2 of
+                            case parseC src s2 indent of
                                 Bad c3 x () ->
                                     Bad (c1 || c2 || c3) x ()
 
                                 Good c3 c s3 ->
-                                    case parseD s3 of
+                                    case parseD src s3 indent of
                                         Bad c4 x () ->
                                             Bad (c1 || c2 || c3 || c4) x ()
 
                                         Good c4 d s4 ->
-                                            case parseE s4 of
+                                            case parseE src s4 indent of
                                                 Bad c5 x () ->
                                                     Bad (c1 || c2 || c3 || c4 || c5) x ()
 
@@ -302,33 +300,33 @@ map5 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) (Parse
 map6 : (a -> b -> c -> d -> e -> f -> value) -> Parser x a -> Parser x b -> Parser x c -> Parser x d -> Parser x e -> Parser x f -> Parser x value
 map6 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) (Parser parseE) (Parser parseF) =
     Parser
-        (\s0 ->
-            case parseA s0 of
+        (\src s0 indent ->
+            case parseA src s0 indent of
                 Bad committed x () ->
                     Bad committed x ()
 
                 Good c1 a s1 ->
-                    case parseB s1 of
+                    case parseB src s1 indent of
                         Bad c2 x () ->
                             Bad (c1 || c2) x ()
 
                         Good c2 b s2 ->
-                            case parseC s2 of
+                            case parseC src s2 indent of
                                 Bad c3 x () ->
                                     Bad (c1 || c2 || c3) x ()
 
                                 Good c3 c s3 ->
-                                    case parseD s3 of
+                                    case parseD src s3 indent of
                                         Bad c4 x () ->
                                             Bad (c1 || c2 || c3 || c4) x ()
 
                                         Good c4 d s4 ->
-                                            case parseE s4 of
+                                            case parseE src s4 indent of
                                                 Bad c5 x () ->
                                                     Bad (c1 || c2 || c3 || c4 || c5) x ()
 
                                                 Good c5 e s5 ->
-                                                    case parseF s5 of
+                                                    case parseF src s5 indent of
                                                         Bad c6 x () ->
                                                             Bad (c1 || c2 || c3 || c4 || c5 || c6) x ()
 
@@ -340,38 +338,38 @@ map6 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) (Parse
 map7 : (a -> b -> c -> d -> e -> f -> g -> value) -> Parser x a -> Parser x b -> Parser x c -> Parser x d -> Parser x e -> Parser x f -> Parser x g -> Parser x value
 map7 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) (Parser parseE) (Parser parseF) (Parser parseG) =
     Parser
-        (\s0 ->
-            case parseA s0 of
+        (\src s0 indent ->
+            case parseA src s0 indent of
                 Bad committed x () ->
                     Bad committed x ()
 
                 Good c1 a s1 ->
-                    case parseB s1 of
+                    case parseB src s1 indent of
                         Bad c2 x () ->
                             Bad (c1 || c2) x ()
 
                         Good c2 b s2 ->
-                            case parseC s2 of
+                            case parseC src s2 indent of
                                 Bad c3 x () ->
                                     Bad (c1 || c2 || c3) x ()
 
                                 Good c3 c s3 ->
-                                    case parseD s3 of
+                                    case parseD src s3 indent of
                                         Bad c4 x () ->
                                             Bad (c1 || c2 || c3 || c4) x ()
 
                                         Good c4 d s4 ->
-                                            case parseE s4 of
+                                            case parseE src s4 indent of
                                                 Bad c5 x () ->
                                                     Bad (c1 || c2 || c3 || c4 || c5) x ()
 
                                                 Good c5 e s5 ->
-                                                    case parseF s5 of
+                                                    case parseF src s5 indent of
                                                         Bad c6 x () ->
                                                             Bad (c1 || c2 || c3 || c4 || c5 || c6) x ()
 
                                                         Good c6 f s6 ->
-                                                            case parseG s6 of
+                                                            case parseG src s6 indent of
                                                                 Bad c7 x () ->
                                                                     Bad (c1 || c2 || c3 || c4 || c5 || c6 || c7) x ()
 
@@ -383,43 +381,43 @@ map7 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) (Parse
 map8 : (a -> b -> c -> d -> e -> f -> g -> h -> value) -> Parser x a -> Parser x b -> Parser x c -> Parser x d -> Parser x e -> Parser x f -> Parser x g -> Parser x h -> Parser x value
 map8 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) (Parser parseE) (Parser parseF) (Parser parseG) (Parser parseH) =
     Parser
-        (\s0 ->
-            case parseA s0 of
+        (\src s0 indent ->
+            case parseA src s0 indent of
                 Bad committed x () ->
                     Bad committed x ()
 
                 Good c1 a s1 ->
-                    case parseB s1 of
+                    case parseB src s1 indent of
                         Bad c2 x () ->
                             Bad (c1 || c2) x ()
 
                         Good c2 b s2 ->
-                            case parseC s2 of
+                            case parseC src s2 indent of
                                 Bad c3 x () ->
                                     Bad (c1 || c2 || c3) x ()
 
                                 Good c3 c s3 ->
-                                    case parseD s3 of
+                                    case parseD src s3 indent of
                                         Bad c4 x () ->
                                             Bad (c1 || c2 || c3 || c4) x ()
 
                                         Good c4 d s4 ->
-                                            case parseE s4 of
+                                            case parseE src s4 indent of
                                                 Bad c5 x () ->
                                                     Bad (c1 || c2 || c3 || c4 || c5) x ()
 
                                                 Good c5 e s5 ->
-                                                    case parseF s5 of
+                                                    case parseF src s5 indent of
                                                         Bad c6 x () ->
                                                             Bad (c1 || c2 || c3 || c4 || c5 || c6) x ()
 
                                                         Good c6 f s6 ->
-                                                            case parseG s6 of
+                                                            case parseG src s6 indent of
                                                                 Bad c7 x () ->
                                                                     Bad (c1 || c2 || c3 || c4 || c5 || c6 || c7) x ()
 
                                                                 Good c7 g s7 ->
-                                                                    case parseH s7 of
+                                                                    case parseH src s7 indent of
                                                                         Bad c8 x () ->
                                                                             Bad (c1 || c2 || c3 || c4 || c5 || c6 || c7 || c8) x ()
 
@@ -431,48 +429,48 @@ map8 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) (Parse
 map9 : (a -> b -> c -> d -> e -> f -> g -> h -> i -> value) -> Parser x a -> Parser x b -> Parser x c -> Parser x d -> Parser x e -> Parser x f -> Parser x g -> Parser x h -> Parser x i -> Parser x value
 map9 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) (Parser parseE) (Parser parseF) (Parser parseG) (Parser parseH) (Parser parseI) =
     Parser
-        (\s0 ->
-            case parseA s0 of
+        (\src s0 indent ->
+            case parseA src s0 indent of
                 Bad committed x () ->
                     Bad committed x ()
 
                 Good c1 a s1 ->
-                    case parseB s1 of
+                    case parseB src s1 indent of
                         Bad c2 x () ->
                             Bad (c1 || c2) x ()
 
                         Good c2 b s2 ->
-                            case parseC s2 of
+                            case parseC src s2 indent of
                                 Bad c3 x () ->
                                     Bad (c1 || c2 || c3) x ()
 
                                 Good c3 c s3 ->
-                                    case parseD s3 of
+                                    case parseD src s3 indent of
                                         Bad c4 x () ->
                                             Bad (c1 || c2 || c3 || c4) x ()
 
                                         Good c4 d s4 ->
-                                            case parseE s4 of
+                                            case parseE src s4 indent of
                                                 Bad c5 x () ->
                                                     Bad (c1 || c2 || c3 || c4 || c5) x ()
 
                                                 Good c5 e s5 ->
-                                                    case parseF s5 of
+                                                    case parseF src s5 indent of
                                                         Bad c6 x () ->
                                                             Bad (c1 || c2 || c3 || c4 || c5 || c6) x ()
 
                                                         Good c6 f s6 ->
-                                                            case parseG s6 of
+                                                            case parseG src s6 indent of
                                                                 Bad c7 x () ->
                                                                     Bad (c1 || c2 || c3 || c4 || c5 || c6 || c7) x ()
 
                                                                 Good c7 g s7 ->
-                                                                    case parseH s7 of
+                                                                    case parseH src s7 indent of
                                                                         Bad c8 x () ->
                                                                             Bad (c1 || c2 || c3 || c4 || c5 || c6 || c7 || c8) x ()
 
                                                                         Good c8 h s8 ->
-                                                                            case parseI s8 of
+                                                                            case parseI src s8 indent of
                                                                                 Bad c9 x () ->
                                                                                     Bad (c1 || c2 || c3 || c4 || c5 || c6 || c7 || c8 || c9) x ()
 
@@ -484,8 +482,8 @@ map9 func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) (Parse
 validate : (a -> Bool) -> x -> Parser x a -> Parser x a
 validate isOkay problemOnNotOkay (Parser parseA) =
     Parser
-        (\s0 ->
-            case parseA s0 of
+        (\src s0 indent ->
+            case parseA src s0 indent of
                 Bad committed x () ->
                     Bad committed x ()
 
@@ -501,34 +499,34 @@ validate isOkay problemOnNotOkay (Parser parseA) =
 columnAndThen : (Int -> Parser x a) -> Parser x a
 columnAndThen callback =
     Parser
-        (\s ->
+        (\src s indent ->
             let
                 (Parser parse) =
                     callback s.col
             in
-            parse s
+            parse src s indent
         )
 
 
 columnIndentAndThen : (Int -> Int -> Parser x a) -> Parser x a
 columnIndentAndThen callback =
     Parser
-        (\s ->
+        (\src s indent ->
             let
                 (Parser parse) =
-                    callback s.col s.indent
+                    callback s.col indent
             in
-            parse s
+            parse src s indent
         )
 
 
 validateEndColumnIndentation : (Int -> Int -> Bool) -> x -> Parser x a -> Parser x a
 validateEndColumnIndentation isOkay problemOnIsNotOkay (Parser parse) =
     Parser
-        (\s0 ->
-            case parse s0 of
+        (\src s0 indent ->
+            case parse src s0 indent of
                 (Good committed _ s1) as good ->
-                    if isOkay s1.col s1.indent then
+                    if isOkay s1.col indent then
                         good
 
                     else
@@ -542,12 +540,12 @@ validateEndColumnIndentation isOkay problemOnIsNotOkay (Parser parse) =
 offsetSourceAndThen : (Int -> String -> Parser x a) -> Parser x a
 offsetSourceAndThen callback =
     Parser
-        (\s ->
+        (\src s indent ->
             let
                 (Parser parse) =
-                    callback s.offset s.src
+                    callback s.offset src
             in
-            parse s
+            parse src s indent
         )
 
 
@@ -566,8 +564,8 @@ lazy thunk =
 oneOf2 : Parser x a -> Parser x a -> Parser x a
 oneOf2 (Parser attemptFirst) (Parser attemptSecond) =
     Parser
-        (\s ->
-            case attemptFirst s of
+        (\src s indent ->
+            case attemptFirst src s indent of
                 (Good _ _ _) as firstGood ->
                     firstGood
 
@@ -576,7 +574,7 @@ oneOf2 (Parser attemptFirst) (Parser attemptSecond) =
                         firstBad
 
                     else
-                        case attemptSecond s of
+                        case attemptSecond src s indent of
                             (Good _ _ _) as secondGood ->
                                 secondGood
 
@@ -592,8 +590,8 @@ oneOf2 (Parser attemptFirst) (Parser attemptSecond) =
 oneOf3 : Parser x a -> Parser x a -> Parser x a -> Parser x a
 oneOf3 (Parser attemptFirst) (Parser attemptSecond) (Parser attemptThird) =
     Parser
-        (\s ->
-            case attemptFirst s of
+        (\src s indent ->
+            case attemptFirst src s indent of
                 (Good _ _ _) as firstGood ->
                     firstGood
 
@@ -602,7 +600,7 @@ oneOf3 (Parser attemptFirst) (Parser attemptSecond) (Parser attemptThird) =
                         firstBad
 
                     else
-                        case attemptSecond s of
+                        case attemptSecond src s indent of
                             (Good _ _ _) as secondGood ->
                                 secondGood
 
@@ -611,7 +609,7 @@ oneOf3 (Parser attemptFirst) (Parser attemptSecond) (Parser attemptThird) =
                                     secondBad
 
                                 else
-                                    case attemptThird s of
+                                    case attemptThird src s indent of
                                         (Good _ _ _) as thirdGood ->
                                             thirdGood
 
@@ -627,8 +625,8 @@ oneOf3 (Parser attemptFirst) (Parser attemptSecond) (Parser attemptThird) =
 oneOf4 : Parser x a -> Parser x a -> Parser x a -> Parser x a -> Parser x a
 oneOf4 (Parser attemptFirst) (Parser attemptSecond) (Parser attemptThird) (Parser attemptFourth) =
     Parser
-        (\s ->
-            case attemptFirst s of
+        (\src s indent ->
+            case attemptFirst src s indent of
                 (Good _ _ _) as firstGood ->
                     firstGood
 
@@ -637,7 +635,7 @@ oneOf4 (Parser attemptFirst) (Parser attemptSecond) (Parser attemptThird) (Parse
                         firstBad
 
                     else
-                        case attemptSecond s of
+                        case attemptSecond src s indent of
                             (Good _ _ _) as secondGood ->
                                 secondGood
 
@@ -646,7 +644,7 @@ oneOf4 (Parser attemptFirst) (Parser attemptSecond) (Parser attemptThird) (Parse
                                     secondBad
 
                                 else
-                                    case attemptThird s of
+                                    case attemptThird src s indent of
                                         (Good _ _ _) as thirdGood ->
                                             thirdGood
 
@@ -655,7 +653,7 @@ oneOf4 (Parser attemptFirst) (Parser attemptSecond) (Parser attemptThird) (Parse
                                                 thirdBad
 
                                             else
-                                                case attemptFourth s of
+                                                case attemptFourth src s indent of
                                                     (Good _ _ _) as fourthGood ->
                                                         fourthGood
 
@@ -676,8 +674,8 @@ oneOf2Map :
     -> Parser x choice
 oneOf2Map firstToChoice (Parser attemptFirst) secondToChoice (Parser attemptSecond) =
     Parser
-        (\s ->
-            case attemptFirst s of
+        (\src s indent ->
+            case attemptFirst src s indent of
                 Good firstCommitted first s1 ->
                     Good firstCommitted (firstToChoice first) s1
 
@@ -686,7 +684,7 @@ oneOf2Map firstToChoice (Parser attemptFirst) secondToChoice (Parser attemptSeco
                         Bad firstCommitted firstX ()
 
                     else
-                        case attemptSecond s of
+                        case attemptSecond src s indent of
                             Good secondCommitted second s1 ->
                                 Good secondCommitted (secondToChoice second) s1
 
@@ -702,8 +700,8 @@ oneOf2Map firstToChoice (Parser attemptFirst) secondToChoice (Parser attemptSeco
 orSucceed : Parser x a -> a -> Parser x a
 orSucceed (Parser attemptFirst) secondRes =
     Parser
-        (\s ->
-            case attemptFirst s of
+        (\src s indent ->
+            case attemptFirst src s indent of
                 (Good _ _ _) as firstGood ->
                     firstGood
 
@@ -719,8 +717,8 @@ orSucceed (Parser attemptFirst) secondRes =
 oneOf2OrSucceed : Parser x a -> Parser x a -> a -> Parser x a
 oneOf2OrSucceed (Parser attemptFirst) (Parser attemptSecond) thirdRes =
     Parser
-        (\s ->
-            case attemptFirst s of
+        (\src s indent ->
+            case attemptFirst src s indent of
                 (Good _ _ _) as firstGood ->
                     firstGood
 
@@ -729,7 +727,7 @@ oneOf2OrSucceed (Parser attemptFirst) (Parser attemptSecond) thirdRes =
                         firstBad
 
                     else
-                        case attemptSecond s of
+                        case attemptSecond src s indent of
                             (Good _ _ _) as secondGood ->
                                 secondGood
 
@@ -746,12 +744,12 @@ oneOf : x -> List (Parser x a) -> Parser x a
 oneOf problemOnEmptyPossibilityList parsers =
     case parsers of
         [] ->
-            Parser (\s -> Bad False (fromState s problemOnEmptyPossibilityList) ())
+            Parser (\_ s _ -> Bad False (fromState s problemOnEmptyPossibilityList) ())
 
         (Parser parse) :: remainingParsers ->
             Parser
-                (\s ->
-                    case parse s of
+                (\src s indent ->
+                    case parse src s indent of
                         (Good _ _ _) as step ->
                             step
 
@@ -760,18 +758,18 @@ oneOf problemOnEmptyPossibilityList parsers =
                                 step
 
                             else
-                                oneOfHelp s x remainingParsers
+                                oneOfHelp src s indent x remainingParsers
                 )
 
 
-oneOfHelp : State -> RopeFilled (DeadEnd x) -> List (Parser x a) -> PStep x a
-oneOfHelp s0 deadEnds parsers =
+oneOfHelp : String -> State -> Int -> RopeFilled (DeadEnd x) -> List (Parser x a) -> PStep x a
+oneOfHelp src s0 indent deadEnds parsers =
     case parsers of
         [] ->
             Bad False deadEnds ()
 
         (Parser parse) :: remainingParsers ->
-            case parse s0 of
+            case parse src s0 indent of
                 (Good _ _ _) as step ->
                     step
 
@@ -780,7 +778,7 @@ oneOfHelp s0 deadEnds parsers =
                         step
 
                     else
-                        oneOfHelp s0 (Append deadEnds x) remainingParsers
+                        oneOfHelp src s0 indent (Append deadEnds x) remainingParsers
 
 
 {-| Decide what steps to take next in your [`loop`](#loop).
@@ -846,16 +844,16 @@ elimination, allowing you to parse however many repeats you want.
 loop : state -> Parser x extension -> (extension -> state -> Step state a) -> Parser x a
 loop state element reduce =
     Parser
-        (\s -> loopHelp False state element reduce s)
+        (\src s indent -> loopHelp src indent False state element reduce s)
 
 
-loopHelp : Bool -> state -> Parser x extension -> (extension -> state -> Step state a) -> State -> PStep x a
-loopHelp committedSoFar state ((Parser parseElement) as element) reduce s0 =
-    case parseElement s0 of
+loopHelp : String -> Int -> Bool -> state -> Parser x extension -> (extension -> state -> Step state a) -> State -> PStep x a
+loopHelp src indent committedSoFar state ((Parser parseElement) as element) reduce s0 =
+    case parseElement src s0 indent of
         Good elementCommitted step s1 ->
             case reduce step state of
                 Loop newState ->
-                    loopHelp (committedSoFar || elementCommitted) newState element reduce s1
+                    loopHelp src indent (committedSoFar || elementCommitted) newState element reduce s1
 
                 Done result ->
                     Good (committedSoFar || elementCommitted) result s1
@@ -867,14 +865,17 @@ loopHelp committedSoFar state ((Parser parseElement) as element) reduce s0 =
 loopWhileSucceeds : Parser x element -> folded -> (element -> folded -> folded) -> (folded -> res) -> Parser x res
 loopWhileSucceeds element initialFolded reduce foldedToRes =
     Parser
-        (\s -> loopWhileSucceedsHelp False element initialFolded reduce foldedToRes s)
+        (\src s indent -> loopWhileSucceedsHelp src indent False element initialFolded reduce foldedToRes s)
 
 
-loopWhileSucceedsHelp : Bool -> Parser x element -> folded -> (element -> folded -> folded) -> (folded -> res) -> State -> PStep x res
-loopWhileSucceedsHelp committedSoFar ((Parser parseElement) as element) soFar reduce foldedToRes s0 =
-    case parseElement s0 of
+loopWhileSucceedsHelp : String -> Int -> Bool -> Parser x element -> folded -> (element -> folded -> folded) -> (folded -> res) -> State -> PStep x res
+loopWhileSucceedsHelp src indent committedSoFar ((Parser parseElement) as element) soFar reduce foldedToRes s0 =
+    case parseElement src s0 indent of
         Good elementCommitted elementResult s1 ->
-            loopWhileSucceedsHelp (committedSoFar || elementCommitted)
+            loopWhileSucceedsHelp
+                src
+                indent
+                (committedSoFar || elementCommitted)
                 element
                 (soFar |> reduce elementResult)
                 reduce
@@ -892,12 +893,12 @@ loopWhileSucceedsHelp committedSoFar ((Parser parseElement) as element) soFar re
 loopUntil : Parser x () -> Parser x element -> folded -> (element -> folded -> folded) -> (folded -> res) -> Parser x res
 loopUntil endParser element initialFolded reduce foldedToRes =
     Parser
-        (\s -> loopUntilHelp False endParser element initialFolded reduce foldedToRes s)
+        (\src s indent -> loopUntilHelp src indent False endParser element initialFolded reduce foldedToRes s)
 
 
-loopUntilHelp : Bool -> Parser x () -> Parser x element -> folded -> (element -> folded -> folded) -> (folded -> res) -> State -> PStep x res
-loopUntilHelp committedSoFar ((Parser parseEnd) as endParser) ((Parser parseElement) as element) soFar reduce foldedToRes s0 =
-    case parseEnd s0 of
+loopUntilHelp : String -> Int -> Bool -> Parser x () -> Parser x element -> folded -> (element -> folded -> folded) -> (folded -> res) -> State -> PStep x res
+loopUntilHelp src indent committedSoFar ((Parser parseEnd) as endParser) ((Parser parseElement) as element) soFar reduce foldedToRes s0 =
+    case parseEnd src s0 indent of
         Good endCommitted () s1 ->
             Good (committedSoFar || endCommitted) (foldedToRes soFar) s1
 
@@ -906,9 +907,12 @@ loopUntilHelp committedSoFar ((Parser parseEnd) as endParser) ((Parser parseElem
                 Bad True endX ()
 
             else
-                case parseElement s0 of
+                case parseElement src s0 indent of
                     Good elementCommitted elementResult s1 ->
-                        loopUntilHelp (committedSoFar || elementCommitted)
+                        loopUntilHelp
+                            src
+                            indent
+                            (committedSoFar || elementCommitted)
                             endParser
                             element
                             (soFar |> reduce elementResult)
@@ -923,8 +927,8 @@ loopUntilHelp committedSoFar ((Parser parseEnd) as endParser) ((Parser parseElem
 backtrackable : Parser x a -> Parser x a
 backtrackable (Parser parse) =
     Parser
-        (\s0 ->
-            case parse s0 of
+        (\src s0 indent ->
+            case parse src s0 indent of
                 Bad _ x () ->
                     Bad False x ()
 
@@ -944,21 +948,19 @@ keyword kwd expecting res =
             String.length kwd
     in
     Parser
-        (\s ->
+        (\src s indent ->
             let
                 newOffset : Int
                 newOffset =
-                    isSubString kwd kwdLength s.offset s.src
+                    isSubString kwd kwdLength s.offset src
             in
-            if newOffset == -1 || 0 <= isSubChar (\c -> Char.Extra.isAlphaNumFast c || c == '_') newOffset s.src then
+            if newOffset == -1 || 0 <= isSubChar (\c -> Char.Extra.isAlphaNumFast c || c == '_') newOffset src then
                 Bad False (fromState s expecting) ()
 
             else
                 Good True
                     res
-                    { src = s.src
-                    , offset = newOffset
-                    , indent = s.indent
+                    { offset = newOffset
                     , row = s.row
                     , col = s.col + kwdLength
                     }
@@ -976,23 +978,22 @@ keywordFollowedBy kwd expecting (Parser parseNext) =
             String.length kwd
     in
     Parser
-        (\s ->
+        (\src s indent ->
             let
                 newOffset : Int
                 newOffset =
-                    isSubString kwd kwdLength s.offset s.src
+                    isSubString kwd kwdLength s.offset src
             in
-            if newOffset == -1 || 0 <= isSubChar (\c -> Char.Extra.isAlphaNumFast c || c == '_') newOffset s.src then
+            if newOffset == -1 || 0 <= isSubChar (\c -> Char.Extra.isAlphaNumFast c || c == '_') newOffset src then
                 Bad False (fromState s expecting) ()
 
             else
-                parseNext
-                    { src = s.src
-                    , offset = newOffset
-                    , indent = s.indent
+                parseNext src
+                    { offset = newOffset
                     , row = s.row
                     , col = s.col + kwdLength
                     }
+                    indent
                     |> pStepCommit
         )
 
@@ -1008,11 +1009,11 @@ symbol str expecting res =
             String.length str
     in
     Parser
-        (\s ->
+        (\src s indent ->
             let
                 newOffset : Int
                 newOffset =
-                    isSubString str strLength s.offset s.src
+                    isSubString str strLength s.offset src
             in
             if newOffset == -1 then
                 Bad False (fromState s expecting) ()
@@ -1020,9 +1021,7 @@ symbol str expecting res =
             else
                 Good True
                     res
-                    { src = s.src
-                    , offset = newOffset
-                    , indent = s.indent
+                    { offset = newOffset
                     , row = s.row
                     , col = s.col + strLength
                     }
@@ -1040,23 +1039,22 @@ symbolFollowedBy str expecting (Parser parseNext) =
             String.length str
     in
     Parser
-        (\s ->
+        (\src s indent ->
             let
                 newOffset : Int
                 newOffset =
-                    isSubString str strLength s.offset s.src
+                    isSubString str strLength s.offset src
             in
             if newOffset == -1 then
                 Bad False (fromState s expecting) ()
 
             else
-                parseNext
-                    { src = s.src
-                    , offset = newOffset
-                    , indent = s.indent
+                parseNext src
+                    { offset = newOffset
                     , row = s.row
                     , col = s.col + strLength
                     }
+                    indent
                     |> pStepCommit
         )
 
@@ -1090,8 +1088,8 @@ number c =
                 |= Parser.Advanced.getOffset
     in
     Parser
-        (\state ->
-            case Parser.Advanced.run parserAdvancedNumberAndStringLength (String.slice state.offset (String.length state.src) state.src) of
+        (\src state indent ->
+            case Parser.Advanced.run parserAdvancedNumberAndStringLength (String.slice state.offset (String.length src) src) of
                 Ok result ->
                     Good False result.number (stateAddLengthToOffsetAndColumn result.length state)
 
@@ -1102,9 +1100,7 @@ number c =
 
 stateAddLengthToOffsetAndColumn : Int -> State -> State
 stateAddLengthToOffsetAndColumn lengthAdded s =
-    { src = s.src
-    , offset = s.offset + lengthAdded
-    , indent = s.indent
+    { offset = s.offset + lengthAdded
     , row = s.row
     , col = s.col + lengthAdded
     }
@@ -1113,8 +1109,8 @@ stateAddLengthToOffsetAndColumn lengthAdded s =
 end : x -> Parser x ()
 end x =
     Parser
-        (\s ->
-            if String.length s.src == s.offset + 0 then
+        (\src s _ ->
+            if String.length src == s.offset + 0 then
                 Good False () s
 
             else
@@ -1125,11 +1121,11 @@ end x =
 anyChar : x -> Parser x Char
 anyChar expecting =
     Parser
-        (\s ->
+        (\src s _ ->
             let
                 newOffset : Int
                 newOffset =
-                    charOrEnd s.offset s.src
+                    charOrEnd s.offset src
             in
             if newOffset == -1 then
                 -- end of source
@@ -1139,25 +1135,21 @@ anyChar expecting =
                 -- newline
                 Good True
                     '\n'
-                    { src = s.src
-                    , offset = s.offset + 1
-                    , indent = s.indent
+                    { offset = s.offset + 1
                     , row = s.row + 1
                     , col = 1
                     }
 
             else
                 -- found
-                case String.toList (String.slice s.offset newOffset s.src) of
+                case String.toList (String.slice s.offset newOffset src) of
                     [] ->
                         Bad False (fromState s expecting) ()
 
                     c :: _ ->
                         Good True
                             c
-                            { src = s.src
-                            , offset = newOffset
-                            , indent = s.indent
+                            { offset = newOffset
                             , row = s.row
                             , col = s.col + 1
                             }
@@ -1167,49 +1159,49 @@ anyChar expecting =
 chompWhileWhitespaceFollowedBy : Parser x next -> Parser x next
 chompWhileWhitespaceFollowedBy (Parser parseNext) =
     Parser
-        (\s0 ->
+        (\src s0 indent ->
             let
                 s1 : State
                 s1 =
-                    chompWhileWhitespaceHelp s0.offset s0.row s0.col s0.src s0.indent
+                    chompWhileWhitespaceHelp s0.offset s0.row s0.col src
             in
             if s1.offset > s0.offset then
-                parseNext s1
+                parseNext src s1 indent
                     |> pStepCommit
 
             else
-                parseNext s1
+                parseNext src s1 indent
         )
 
 
-chompWhileWhitespaceHelp : Int -> Int -> Int -> String -> Int -> State
-chompWhileWhitespaceHelp offset row col src indent =
+chompWhileWhitespaceHelp : Int -> Int -> Int -> String -> State
+chompWhileWhitespaceHelp offset row col src =
     case String.slice offset (offset + 1) src of
         " " ->
-            chompWhileWhitespaceHelp (offset + 1) row (col + 1) src indent
+            chompWhileWhitespaceHelp (offset + 1) row (col + 1) src
 
         "\n" ->
-            chompWhileWhitespaceHelp (offset + 1) (row + 1) 1 src indent
+            chompWhileWhitespaceHelp (offset + 1) (row + 1) 1 src
 
         "\u{000D}" ->
-            chompWhileWhitespaceHelp (offset + 1) row (col + 1) src indent
+            chompWhileWhitespaceHelp (offset + 1) row (col + 1) src
 
         -- empty or non-whitespace
         _ ->
-            { src = src, offset = offset, indent = indent, row = row, col = col }
+            { offset = offset, row = row, col = col }
 
 
 while : (Char -> Bool) -> Parser x String
 while isGood =
     Parser
-        (\s0 ->
+        (\src s0 _ ->
             let
                 s1 : State
                 s1 =
-                    chompWhileHelp isGood s0.offset s0.row s0.col s0.src s0.indent
+                    chompWhileHelp isGood s0.offset s0.row s0.col src
             in
             Good (s1.offset > s0.offset)
-                (String.slice s0.offset s1.offset s0.src)
+                (String.slice s0.offset s1.offset src)
                 s1
         )
 
@@ -1217,20 +1209,20 @@ while isGood =
 whileMap : (Char -> Bool) -> (String -> res) -> Parser x res
 whileMap isGood chompedStringToRes =
     Parser
-        (\s0 ->
+        (\src s0 _ ->
             let
                 s1 : State
                 s1 =
-                    chompWhileHelp isGood s0.offset s0.row s0.col s0.src s0.indent
+                    chompWhileHelp isGood s0.offset s0.row s0.col src
             in
             Good (s1.offset > s0.offset)
-                (chompedStringToRes (String.slice s0.offset s1.offset s0.src))
+                (chompedStringToRes (String.slice s0.offset s1.offset src))
                 s1
         )
 
 
-chompWhileHelp : (Char -> Bool) -> Int -> Int -> Int -> String -> Int -> State
-chompWhileHelp isGood offset row col src indent =
+chompWhileHelp : (Char -> Bool) -> Int -> Int -> Int -> String -> State
+chompWhileHelp isGood offset row col src =
     let
         newOffset : Int
         newOffset =
@@ -1238,20 +1230,18 @@ chompWhileHelp isGood offset row col src indent =
     in
     if newOffset == -1 then
         -- no match
-        { src = src
-        , offset = offset
-        , indent = indent
+        { offset = offset
         , row = row
         , col = col
         }
 
     else if newOffset == -2 then
         -- matched a newline
-        chompWhileHelp isGood (offset + 1) (row + 1) 1 src indent
+        chompWhileHelp isGood (offset + 1) (row + 1) 1 src
 
     else
         -- normal match
-        chompWhileHelp isGood newOffset row (col + 1) src indent
+        chompWhileHelp isGood newOffset row (col + 1) src
 
 
 ifFollowedByWhileExcept :
@@ -1262,11 +1252,11 @@ ifFollowedByWhileExcept :
     -> Parser x String
 ifFollowedByWhileExcept firstIsOkay afterFirstIsOkay exceptionSet expecting =
     Parser
-        (\s ->
+        (\src s _ ->
             let
                 firstOffset : Int
                 firstOffset =
-                    isSubChar firstIsOkay s.offset s.src
+                    isSubChar firstIsOkay s.offset src
             in
             if firstOffset == -1 then
                 Bad False (fromState s expecting) ()
@@ -1276,14 +1266,14 @@ ifFollowedByWhileExcept firstIsOkay afterFirstIsOkay exceptionSet expecting =
                     s1 : State
                     s1 =
                         if firstOffset == -2 then
-                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 s.src s.indent
+                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 src
 
                         else
-                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.src s.indent
+                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) src
 
                     name : String
                     name =
-                        String.slice s.offset s1.offset s.src
+                        String.slice s.offset s1.offset src
                 in
                 if Set.member name exceptionSet then
                     Bad False (fromState s expecting) ()
@@ -1300,11 +1290,11 @@ ifFollowedByWhile :
     -> Parser x String
 ifFollowedByWhile firstIsOkay problemOnFirstNotOkay afterFirstIsOkay =
     Parser
-        (\s ->
+        (\src s _ ->
             let
                 firstOffset : Int
                 firstOffset =
-                    isSubChar firstIsOkay s.offset s.src
+                    isSubChar firstIsOkay s.offset src
             in
             if firstOffset == -1 then
                 Bad False (fromState s problemOnFirstNotOkay) ()
@@ -1314,12 +1304,12 @@ ifFollowedByWhile firstIsOkay problemOnFirstNotOkay afterFirstIsOkay =
                     s1 : State
                     s1 =
                         if firstOffset == -2 then
-                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 s.src s.indent
+                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 src
 
                         else
-                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.src s.indent
+                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) src
                 in
-                Good True (String.slice s.offset s1.offset s.src) s1
+                Good True (String.slice s.offset s1.offset src) s1
         )
 
 
@@ -1330,11 +1320,11 @@ anyCharFollowedByWhileMap :
     -> Parser x res
 anyCharFollowedByWhileMap chompedStringToRes expectingAnyChar afterFirstIsOkay =
     Parser
-        (\s ->
+        (\src s _ ->
             let
                 firstOffset : Int
                 firstOffset =
-                    charOrEnd s.offset s.src
+                    charOrEnd s.offset src
             in
             if firstOffset == -1 then
                 -- end of source
@@ -1345,12 +1335,12 @@ anyCharFollowedByWhileMap chompedStringToRes expectingAnyChar afterFirstIsOkay =
                     s1 : State
                     s1 =
                         if firstOffset == -2 then
-                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 s.src s.indent
+                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 src
 
                         else
-                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.src s.indent
+                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) src
                 in
-                Good True (chompedStringToRes (String.slice s.offset s1.offset s.src)) s1
+                Good True (chompedStringToRes (String.slice s.offset s1.offset src)) s1
         )
 
 
@@ -1407,38 +1397,12 @@ nestableMultiComment ( openChar, openTail ) expectingOpen ( closeChar, closeTail
 
 withIndent : Int -> Parser x a -> Parser x a
 withIndent newIndent (Parser parse) =
-    Parser
-        (\s0 ->
-            case parse (changeIndent newIndent s0) of
-                Good committed a s1 ->
-                    Good committed a (changeIndent s0.indent s1)
-
-                bad ->
-                    bad
-        )
+    Parser (\src s0 _ -> parse src s0 newIndent)
 
 
 withIndentSetToColumn : Parser x a -> Parser x a
 withIndentSetToColumn (Parser parse) =
-    Parser
-        (\s0 ->
-            case parse (changeIndent s0.col s0) of
-                Good committed a s1 ->
-                    Good committed a (changeIndent s0.indent s1)
-
-                bad ->
-                    bad
-        )
-
-
-changeIndent : Int -> State -> State
-changeIndent newIndent s =
-    { src = s.src
-    , offset = s.offset
-    , indent = newIndent
-    , row = s.row
-    , col = s.col
-    }
+    Parser (\src s0 _ -> parse src s0 s0.col)
 
 
 mapWithStartPosition :
@@ -1447,8 +1411,8 @@ mapWithStartPosition :
     -> Parser x b
 mapWithStartPosition combineStartAndResult (Parser parse) =
     Parser
-        (\s0 ->
-            case parse s0 of
+        (\src s0 indent ->
+            case parse src s0 indent of
                 Good committed a s1 ->
                     Good committed (combineStartAndResult { row = s0.row, column = s0.col } a) s1
 
@@ -1463,8 +1427,8 @@ mapWithEndPosition :
     -> Parser x b
 mapWithEndPosition combineStartAndResult (Parser parse) =
     Parser
-        (\s0 ->
-            case parse s0 of
+        (\src s0 indent ->
+            case parse src s0 indent of
                 Good committed a s1 ->
                     Good committed (combineStartAndResult a { row = s1.row, column = s1.col }) s1
 
@@ -1479,8 +1443,8 @@ mapWithStartAndEndPosition :
     -> Parser x b
 mapWithStartAndEndPosition combineStartAndResult (Parser parse) =
     Parser
-        (\s0 ->
-            case parse s0 of
+        (\src s0 indent ->
+            case parse src s0 indent of
                 Good committed a s1 ->
                     Good committed (combineStartAndResult { row = s0.row, column = s0.col } a { row = s1.row, column = s1.col }) s1
 

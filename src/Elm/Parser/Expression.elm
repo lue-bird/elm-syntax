@@ -86,13 +86,20 @@ recordAccessOptimisticLayout =
 
 recordAccessParserOptimisticLayout : Parser (WithComments ExtensionRight)
 recordAccessParserOptimisticLayout =
-    lookBehindOneCharacterAndThen
-        (\c ->
-            if c == " " || c == "\n" || c == "\u{000D}" then
-                problemRecordAccessStartingWithSpace
+    ParserFast.andThenWithPreviousChar
+        (\maybePreviousChar ->
+            case maybePreviousChar of
+                Just c ->
+                    -- 'a-b', 'a - b' and 'a- b' are subtractions, but 'a -b' is an application on a negation
+                    if c == ' ' || c == '\n' || c == '\u{000D}' then
+                        problemRecordAccessStartingWithSpace
 
-            else
-                dotFieldOptimisticLayout
+                    else
+                        dotFieldOptimisticLayout
+
+                -- should not happen
+                Nothing ->
+                    dotFieldOptimisticLayout
         )
 
 
@@ -103,7 +110,7 @@ problemRecordAccessStartingWithSpace =
 
 dotFieldOptimisticLayout : ParserFast.Parser (WithComments ExtensionRight)
 dotFieldOptimisticLayout =
-    ParserFast.symbolFollowedBy "."
+    ParserFast.symbol1FollowedBy '.'
         (ParserFast.map2
             (\field commentsAfter ->
                 { comments = commentsAfter
@@ -145,9 +152,9 @@ glslExpressionAfterOpeningSquareBracket =
                 }
             )
             (ParserFast.loopUntil
-                (ParserFast.symbol "|]" ())
+                (ParserFast.symbol2 '|' ']' ())
                 (ParserFast.oneOf2
-                    (ParserFast.symbol "|" "|")
+                    (ParserFast.symbol1 '|' "|")
                     (ParserFast.whileMap (\c -> c /= '|') identity)
                 )
                 ""
@@ -161,7 +168,7 @@ glslExpressionAfterOpeningSquareBracket =
 
 listOrGlslExpression : Parser (WithComments (Node Expression))
 listOrGlslExpression =
-    ParserFast.symbolFollowedBy "[" expressionAfterOpeningSquareBracket
+    ParserFast.symbol1FollowedBy '[' expressionAfterOpeningSquareBracket
 
 
 expressionAfterOpeningSquareBracket : Parser (WithComments (Node Expression))
@@ -187,7 +194,7 @@ expressionAfterOpeningSquareBracket =
                 )
                 Layout.maybeLayout
                 (ParserFast.oneOf2
-                    (ParserFast.symbol "]" { comments = Rope.empty, syntax = ListExpr [] })
+                    (ParserFast.symbol1 ']' { comments = Rope.empty, syntax = ListExpr [] })
                     (ParserFast.map4
                         (\head commentsAfterHead tail () ->
                             { comments =
@@ -200,7 +207,7 @@ expressionAfterOpeningSquareBracket =
                         expression
                         Layout.maybeLayout
                         (ParserWithComments.many
-                            (ParserFast.symbolFollowedBy ","
+                            (ParserFast.symbol1FollowedBy ','
                                 (Layout.maybeAroundBothSides expression)
                             )
                         )
@@ -225,7 +232,7 @@ recordExpression =
             , syntax = afterCurly.syntax
             }
         )
-        (ParserFast.symbolFollowedBy "{" Layout.maybeLayout)
+        (ParserFast.symbol1FollowedBy '{' Layout.maybeLayout)
         recordContentsCurlyEnd
         |> Node.parser
 
@@ -258,7 +265,7 @@ recordContentsCurlyEnd =
                         , syntax = RecordUpdateFirstSetter setterResult.syntax
                         }
                     )
-                    (ParserFast.symbolFollowedBy "|" Layout.maybeLayout)
+                    (ParserFast.symbol1FollowedBy '|' Layout.maybeLayout)
                     recordSetterNodeWithLayout
                 )
                 (ParserFast.map3
@@ -270,15 +277,15 @@ recordContentsCurlyEnd =
                         , syntax = FieldsFirstValue expressionResult.syntax
                         }
                     )
-                    (ParserFast.symbolFollowedBy "=" Layout.maybeLayout)
+                    (ParserFast.symbol1FollowedBy '=' Layout.maybeLayout)
                     expression
                     Layout.maybeLayout
                 )
             )
             recordFields
-            (Layout.maybeLayoutUntilIgnored ParserFast.symbol "}")
+            (Layout.maybeLayoutUntilIgnoredSymbol1 '}')
         )
-        (ParserFast.symbol "}" { comments = Rope.empty, syntax = RecordExpr [] })
+        (ParserFast.symbol1 '}' { comments = Rope.empty, syntax = RecordExpr [] })
 
 
 type RecordFieldsOrUpdateAfterName
@@ -295,7 +302,7 @@ recordFields =
                 , syntax = setterResult.syntax
                 }
             )
-            (ParserFast.symbolFollowedBy "," Layout.maybeLayout)
+            (ParserFast.symbol1FollowedBy ',' Layout.maybeLayout)
             recordSetterNodeWithLayout
         )
 
@@ -315,7 +322,7 @@ recordSetterNodeWithLayout =
                 }
             )
             (Node.parserCore Tokens.functionName)
-            (Layout.maybeLayoutUntilIgnored ParserFast.symbol "=")
+            (Layout.maybeLayoutUntilIgnoredSymbol1 '=')
             Layout.maybeLayout
             expression
             -- This extra whitespace is just included for compatibility with earlier version
@@ -374,7 +381,7 @@ lambdaExpression =
             }
         )
         (ParserFast.mapWithStartPosition (\start commentsAfter -> { commentsAfter = commentsAfter, start = start })
-            (ParserFast.symbolFollowedBy "\\"
+            (ParserFast.symbol1FollowedBy '\\'
                 Layout.maybeLayout
             )
         )
@@ -464,7 +471,7 @@ caseStatements =
             }
         )
         Patterns.pattern
-        (Layout.maybeLayoutUntilIgnored ParserFast.symbol "->")
+        (Layout.maybeLayoutUntilIgnoredSymbol2 '-' '>')
         Layout.maybeLayout
         expression
         (ParserWithComments.manyWithoutReverse caseStatement)
@@ -484,7 +491,7 @@ caseStatement =
                 }
             )
             Patterns.pattern
-            (Layout.maybeLayoutUntilIgnored ParserFast.symbol "->")
+            (Layout.maybeLayoutUntilIgnoredSymbol2 '-' '>')
             Layout.maybeLayout
             expression
         )
@@ -600,7 +607,7 @@ letDestructuringDeclaration =
         )
         Patterns.patternNotDirectlyComposing
         Layout.maybeLayout
-        (ParserFast.symbolFollowedBy "=" Layout.maybeLayout)
+        (ParserFast.symbol1FollowedBy '=' Layout.maybeLayout)
         expression
 
 
@@ -689,7 +696,7 @@ letFunction =
                         , typeAnnotation = typeAnnotationResult.syntax
                         }
                 )
-                (ParserFast.symbolFollowedBy ":" Layout.maybeLayout)
+                (ParserFast.symbol1FollowedBy ':' Layout.maybeLayout)
                 TypeAnnotation.typeAnnotation
                 (Layout.layoutStrictFollowedBy
                     (Node.parserCore Tokens.functionName)
@@ -816,7 +823,7 @@ negationOperation =
         )
         (ParserFast.mapWithStartPosition
             (\start () -> start)
-            (ParserFast.symbolBacktrackable "-" ())
+            (ParserFast.symbol1Backtrackable '-' ())
         )
         (extendedSubExpressionWithoutInitialLayout abovePrecedence95)
 
@@ -859,7 +866,7 @@ unqualifiedFunctionReferenceExpression =
 maybeDotReferenceExpressionTuple : ParserFast.Parser (Maybe ( List String, String ))
 maybeDotReferenceExpressionTuple =
     ParserFast.orSucceed
-        (ParserFast.symbolFollowedBy "."
+        (ParserFast.symbol1FollowedBy '.'
             (ParserFast.oneOf2Map
                 Just
                 (ParserFast.map2
@@ -891,12 +898,12 @@ recordAccessFunctionExpression =
                     (RecordAccessFunction ("." ++ field))
             }
         )
-        (ParserFast.symbolFollowedBy "." Tokens.functionName)
+        (ParserFast.symbol1FollowedBy '.' Tokens.functionName)
 
 
 tupledExpression : Parser (WithComments (Node Expression))
 tupledExpression =
-    ParserFast.symbolFollowedBy "("
+    ParserFast.symbol1FollowedBy '('
         (ParserFast.oneOf
             (ParserFast.mapWithEndPosition
                 (\() end ->
@@ -906,7 +913,7 @@ tupledExpression =
                             UnitExpr
                     }
                 )
-                (ParserFast.symbol ")" ())
+                (ParserFast.symbol1 ')' ())
                 :: -- since `-` alone  could indicate negation or prefix operator,
                    -- we check for `-)` first
                    ParserFast.mapWithEndPosition
@@ -917,7 +924,7 @@ tupledExpression =
                                 expressionPrefixOperatorMinus
                         }
                     )
-                    (ParserFast.symbol "-)" ())
+                    (ParserFast.symbol2 '-' ')' ())
                 :: tupledExpressionInnerAfterOpeningParens
                 -- and since prefix operators are much more rare than e.g. parenthesized
                 -- we check those later
@@ -998,7 +1005,7 @@ tupledExpressionInnerAfterOpeningParens =
                         , syntax = partResult.syntax
                         }
                     )
-                    (ParserFast.symbolFollowedBy "," Layout.maybeLayout)
+                    (ParserFast.symbol1FollowedBy ',' Layout.maybeLayout)
                     expression
                     Layout.maybeLayout
                 )
@@ -1196,27 +1203,25 @@ infixRight precedence possibilitiesForPrecedenceMinus1 symbol =
         )
 
 
-lookBehindOneCharacterAndThen : (String -> Parser res) -> Parser res
-lookBehindOneCharacterAndThen callback =
-    ParserFast.offsetSourceAndThen
-        (\offset source ->
-            callback (String.slice (offset - 1) offset source)
-        )
-
-
 infixLeftSubtraction : Int -> Parser (WithComments ExtensionRight) -> ( Int, Parser (WithComments ExtensionRight) )
 infixLeftSubtraction precedence possibilitiesForPrecedence =
     infixHelp precedence
         possibilitiesForPrecedence
         (\next ->
-            lookBehindOneCharacterAndThen
-                (\c ->
-                    -- 'a-b', 'a - b' and 'a- b' are subtractions, but 'a -b' is an application on a negation
-                    if c == " " || c == "\n" || c == "\u{000D}" then
-                        Tokens.minusFollowedBySingleWhitespace next
+            ParserFast.andThenWithPreviousChar
+                (\maybePreviousChar ->
+                    case maybePreviousChar of
+                        Just c ->
+                            -- 'a-b', 'a - b' and 'a- b' are subtractions, but 'a -b' is an application on a negation
+                            if c == ' ' || c == '\n' || c == '\u{000D}' then
+                                Tokens.minusFollowedBySingleWhitespace next
 
-                    else
-                        ParserFast.symbolFollowedBy "-" next
+                            else
+                                ParserFast.symbol1FollowedBy '-' next
+
+                        -- should not happen
+                        Nothing ->
+                            ParserFast.symbol1FollowedBy '-' next
                 )
         )
         (\right ->

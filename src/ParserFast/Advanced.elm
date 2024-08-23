@@ -1,19 +1,20 @@
 module ParserFast.Advanced exposing
     ( Parser, run
-    , number, symbol, symbolBacktrackable, symbolFollowedBy, keyword, keywordFollowedBy, whileMap, ifFollowedByWhile, ifFollowedByWhileExcept, anyChar, end
+    , number, symbol1, symbol1Backtrackable, symbol2, symbol3, symbol, symbol1FollowedBy, symbol2FollowedBy, symbolFollowedBy, keyword, keywordFollowedBy, whileMap, ifFollowedByWhile, ifFollowedByWhileExcept, anyChar, end
     , succeed, problem, lazy, map, map2, map3, map4, map5, map6, map7, map8, map9, validate
     , orSucceed, oneOf2, oneOf2OrSucceed, oneOf2Map, oneOf3, oneOf4, oneOf
     , loopWhileSucceeds, loopUntil
     , chompWhileWhitespaceFollowedBy, nestableMultiComment
     , withIndent, withIndentSetToColumn
-    , columnAndThen, columnIndentAndThen, validateEndColumnIndentation, validateEndColumnIndentationBacktrackable, offsetSourceAndThen, mapWithStartPosition, mapWithEndPosition, mapWithStartAndEndPosition
+    , columnAndThen, columnIndentAndThen, validateEndColumnIndentation, validateEndColumnIndentationBacktrackable, mapWithStartPosition, mapWithEndPosition, mapWithStartAndEndPosition
+    , andThenWithPreviousChar, andThenWithRemaining
     )
 
 {-|
 
 @docs Parser, run
 
-@docs number, symbol, symbolBacktrackable, symbolFollowedBy, keyword, keywordFollowedBy, whileMap, ifFollowedByWhile, ifFollowedByWhileExcept, anyChar, end
+@docs number, symbol1, symbol1Backtrackable, symbol2, symbol3, symbol, symbol1FollowedBy, symbol2FollowedBy, symbolFollowedBy, keyword, keywordFollowedBy, whileMap, ifFollowedByWhile, ifFollowedByWhileExcept, anyChar, end
 
 
 # Flow
@@ -30,16 +31,21 @@ module ParserFast.Advanced exposing
 @docs chompWhileWhitespaceFollowedBy, nestableMultiComment
 
 
-# Indentation, Positions and Source
+# Indentation and positions
 
 @docs withIndent, withIndentSetToColumn
-@docs columnAndThen, columnIndentAndThen, validateEndColumnIndentation, validateEndColumnIndentationBacktrackable, offsetSourceAndThen, mapWithStartPosition, mapWithEndPosition, mapWithStartAndEndPosition
+@docs columnAndThen, columnIndentAndThen, validateEndColumnIndentation, validateEndColumnIndentationBacktrackable, mapWithStartPosition, mapWithEndPosition, mapWithStartAndEndPosition
+
+
+# Look behind and ahead
+
+@docs andThenWithPreviousChar, andThenWithRemaining
 
 -}
 
 import Char
 import Char.Extra
-import Parser.Advanced exposing ((|=))
+import Parser.Advanced exposing ((|.), (|=))
 import Set
 
 
@@ -84,8 +90,8 @@ type PStep problem value
 
 
 type alias State =
-    { src : String
-    , offset : Int
+    { previousChar : Maybe Char
+    , remaining : List Char
     , indent : Int
     , row : Int
     , col : Int
@@ -102,12 +108,13 @@ for each dead end.
 -}
 run : Parser x a -> String -> Result (List (DeadEnd x)) a
 run (Parser parse) src =
-    case parse { src = src, offset = 0, indent = 1, row = 1, col = 1 } of
+    case parse { remaining = String.toList src, previousChar = Nothing, indent = 1, row = 1, col = 1 } of
         Good _ value _ ->
             Ok value
 
         Bad _ deadEnds () ->
             Err (ropeFilledToList deadEnds [])
+ 
 
 
 
@@ -556,13 +563,25 @@ validateEndColumnIndentationBacktrackable isOkay problemOnIsNotOkay (Parser pars
         )
 
 
-offsetSourceAndThen : (Int -> String -> Parser x a) -> Parser x a
-offsetSourceAndThen callback =
+andThenWithRemaining : (List Char -> Parser x a) -> Parser x a
+andThenWithRemaining callback =
     Parser
         (\s ->
             let
                 (Parser parse) =
-                    callback s.offset s.src
+                    callback s.remaining
+            in
+            parse s
+        )
+
+
+andThenWithPreviousChar : (Maybe Char -> Parser x res) -> Parser x res
+andThenWithPreviousChar callback =
+    Parser
+        (\s ->
+            let
+                (Parser parse) =
+                    callback s.previousChar
             in
             parse s
         )
@@ -946,27 +965,58 @@ keyword kwd expecting res =
         kwdLength : Int
         kwdLength =
             String.length kwd
+
+        kwdChars =
+            String.toList kwd
+
+        justLastKwdChar =
+            case List.reverse kwdChars of
+                [] ->
+                    -- TODO error? make impossible?
+                    Nothing
+
+                last :: _ ->
+                    Just last
     in
     Parser
         (\s ->
-            let
-                newOffset : Int
-                newOffset =
-                    isSubString kwd kwdLength s.offset s.src
-            in
-            if newOffset == -1 || isSubCharSinglePart (\c -> Char.Extra.isAlphaNumFast c || c == '_') newOffset s.src then
-                Bad False (fromState s expecting) ()
+            case startEquals kwdChars s.remaining of
+                Just newRemaining ->
+                    if isNextCharAlphaNumOrUnderscore newRemaining then
+                        Bad False (fromState s expecting) ()
 
-            else
-                Good True
-                    res
-                    { src = s.src
-                    , offset = newOffset
-                    , indent = s.indent
-                    , row = s.row
-                    , col = s.col + kwdLength
-                    }
+                    else
+                        Good True
+                            res
+                            { previousChar = justLastKwdChar
+                            , remaining = newRemaining
+                            , indent = s.indent
+                            , row = s.row
+                            , col = s.col + kwdLength
+                            }
+
+                Nothing ->
+                    Bad False (fromState s expecting) ()
         )
+
+
+startEquals : List a -> List a -> Maybe (List a)
+startEquals startToCheckFor elements =
+    case startToCheckFor of
+        [] ->
+            Just elements
+
+        startToCheckForHead :: startToCheckForTail ->
+            case elements of
+                [] ->
+                    Nothing
+
+                head :: tail ->
+                    if head == startToCheckForHead then
+                        startEquals startToCheckForTail tail
+
+                    else
+                        Nothing
 
 
 {-| Make sure the given String isn't empty and does not contain \\n
@@ -978,26 +1028,38 @@ keywordFollowedBy kwd expecting (Parser parseNext) =
         kwdLength : Int
         kwdLength =
             String.length kwd
+
+        kwdChars =
+            String.toList kwd
+
+        justLastKwdChar =
+            case List.reverse kwdChars of
+                [] ->
+                    -- TODO error? make impossible?
+                    Nothing
+
+                last :: _ ->
+                    Just last
     in
     Parser
         (\s ->
-            let
-                newOffset : Int
-                newOffset =
-                    isSubString kwd kwdLength s.offset s.src
-            in
-            if newOffset == -1 || isSubCharSinglePart (\c -> Char.Extra.isAlphaNumFast c || c == '_') newOffset s.src then
-                Bad False (fromState s expecting) ()
+            case startEquals kwdChars s.remaining of
+                Just newRemaining ->
+                    if isNextCharAlphaNumOrUnderscore newRemaining then
+                        Bad False (fromState s expecting) ()
 
-            else
-                parseNext
-                    { src = s.src
-                    , offset = newOffset
-                    , indent = s.indent
-                    , row = s.row
-                    , col = s.col + kwdLength
-                    }
-                    |> pStepCommit
+                    else
+                        parseNext
+                            { previousChar = justLastKwdChar
+                            , remaining = newRemaining
+                            , indent = s.indent
+                            , row = s.row
+                            , col = s.col + kwdLength
+                            }
+                            |> pStepCommit
+
+                Nothing ->
+                    Bad False (fromState s expecting) ()
         )
 
 
@@ -1010,58 +1072,196 @@ symbol str expecting res =
         strLength : Int
         strLength =
             String.length str
+
+        strChars =
+            String.toList str
+
+        justLastStrChar =
+            case List.reverse strChars of
+                [] ->
+                    -- TODO error? make impossible?
+                    Nothing
+
+                last :: _ ->
+                    Just last
     in
     Parser
         (\s ->
-            let
-                newOffset : Int
-                newOffset =
-                    isSubString str strLength s.offset s.src
-            in
-            if newOffset == -1 then
-                Bad False (fromState s expecting) ()
+            case startEquals strChars s.remaining of
+                Just newRemaining ->
+                    Good True
+                        res
+                        { previousChar = justLastStrChar
+                        , remaining = newRemaining
+                        , indent = s.indent
+                        , row = s.row
+                        , col = s.col + strLength
+                        }
 
-            else
-                Good True
-                    res
-                    { src = s.src
-                    , offset = newOffset
-                    , indent = s.indent
-                    , row = s.row
-                    , col = s.col + strLength
-                    }
+                Nothing ->
+                    Bad False (fromState s expecting) ()
         )
 
 
-{-| Make sure the given String does not contain \\n
+{-| Make sure the given Chars do not contain \\n
 or 2-part UTF-16 characters
 -}
-symbolBacktrackable : String -> x -> res -> Parser x res
-symbolBacktrackable str expecting res =
-    let
-        strLength : Int
-        strLength =
-            String.length str
-    in
+symbol2 : Char -> Char -> x -> res -> Parser x res
+symbol2 symbolChar0 symbolChar1 expecting res =
     Parser
         (\s ->
-            let
-                newOffset : Int
-                newOffset =
-                    isSubString str strLength s.offset s.src
-            in
-            if newOffset == -1 then
-                Bad False (fromState s expecting) ()
+            case s.remaining of
+                char0 :: char1 :: newRemaining ->
+                    if char0 == symbolChar0 && char1 == symbolChar1 then
+                        Good True
+                            res
+                            { previousChar = Just char1
+                            , remaining = newRemaining
+                            , indent = s.indent
+                            , row = s.row
+                            , col = s.col + 2
+                            }
 
-            else
-                Good False
-                    res
-                    { src = s.src
-                    , offset = newOffset
-                    , indent = s.indent
-                    , row = s.row
-                    , col = s.col + strLength
-                    }
+                    else
+                        Bad False (fromState s expecting) ()
+
+                _ ->
+                    Bad False (fromState s expecting) ()
+        )
+
+
+{-| Make sure the given Chars do not contain \\n
+or 2-part UTF-16 characters
+-}
+symbol3 : Char -> Char -> Char -> x -> res -> Parser x res
+symbol3 symbolChar0 symbolChar1 symbolChar2 expecting res =
+    Parser
+        (\s ->
+            case s.remaining of
+                char0 :: char1 :: char2 :: newRemaining ->
+                    if char0 == symbolChar0 && char1 == symbolChar1 && char2 == symbolChar2 then
+                        Good True
+                            res
+                            { previousChar = Just char2
+                            , remaining = newRemaining
+                            , indent = s.indent
+                            , row = s.row
+                            , col = s.col + 3
+                            }
+
+                    else
+                        Bad False (fromState s expecting) ()
+
+                _ ->
+                    Bad False (fromState s expecting) ()
+        )
+
+
+{-| Make sure the given Char does not contain \\n
+or 2-part UTF-16 characters
+-}
+symbol1 : Char -> x -> res -> Parser x res
+symbol1 symbolChar expecting res =
+    Parser
+        (\s ->
+            case s.remaining of
+                head :: newRemaining ->
+                    if head == symbolChar then
+                        Good True
+                            res
+                            { previousChar = Just head
+                            , remaining = newRemaining
+                            , indent = s.indent
+                            , row = s.row
+                            , col = s.col + 1
+                            }
+
+                    else
+                        Bad False (fromState s expecting) ()
+
+                _ ->
+                    Bad False (fromState s expecting) ()
+        )
+
+
+{-| Make sure the given Char does not contain \\n
+or 2-part UTF-16 characters
+-}
+symbol1Backtrackable : Char -> x -> res -> Parser x res
+symbol1Backtrackable symbolChar expecting res =
+    Parser
+        (\s ->
+            case s.remaining of
+                head :: newRemaining ->
+                    if head == symbolChar then
+                        Good False
+                            res
+                            { previousChar = Just head
+                            , remaining = newRemaining
+                            , indent = s.indent
+                            , row = s.row
+                            , col = s.col + 1
+                            }
+
+                    else
+                        Bad False (fromState s expecting) ()
+
+                _ ->
+                    Bad False (fromState s expecting) ()
+        )
+
+
+{-| Make sure the given Char does not contain \\n
+or 2-part UTF-16 characters
+-}
+symbol1FollowedBy : Char -> x -> Parser x next -> Parser x next
+symbol1FollowedBy symbolChar expecting (Parser parseNext) =
+    Parser
+        (\s ->
+            case s.remaining of
+                head :: newRemaining ->
+                    if head == symbolChar then
+                        parseNext
+                            { previousChar = Just head
+                            , remaining = newRemaining
+                            , indent = s.indent
+                            , row = s.row
+                            , col = s.col + 1
+                            }
+                            |> pStepCommit
+
+                    else
+                        Bad False (fromState s expecting) ()
+
+                _ ->
+                    Bad False (fromState s expecting) ()
+        )
+
+
+{-| Make sure the given Chars do not contain \\n
+or 2-part UTF-16 characters
+-}
+symbol2FollowedBy : Char -> Char -> x -> Parser x next -> Parser x next
+symbol2FollowedBy symbolChar0 symbolChar1 expecting (Parser parseNext) =
+    Parser
+        (\s ->
+            case s.remaining of
+                char0 :: char1 :: newRemaining ->
+                    if char0 == symbolChar0 && char1 == symbolChar1 then
+                        parseNext
+                            { previousChar = Just char1
+                            , remaining = newRemaining
+                            , indent = s.indent
+                            , row = s.row
+                            , col = s.col + 2
+                            }
+                            |> pStepCommit
+
+                    else
+                        Bad False (fromState s expecting) ()
+
+                _ ->
+                    Bad False (fromState s expecting) ()
         )
 
 
@@ -1074,26 +1274,34 @@ symbolFollowedBy str expecting (Parser parseNext) =
         strLength : Int
         strLength =
             String.length str
+
+        strChars =
+            String.toList str
+
+        justLastStrChar =
+            case List.reverse strChars of
+                [] ->
+                    -- TODO error? make impossible?
+                    Nothing
+
+                last :: _ ->
+                    Just last
     in
     Parser
         (\s ->
-            let
-                newOffset : Int
-                newOffset =
-                    isSubString str strLength s.offset s.src
-            in
-            if newOffset == -1 then
-                Bad False (fromState s expecting) ()
+            case startEquals strChars s.remaining of
+                Just newRemaining ->
+                    parseNext
+                        { previousChar = justLastStrChar
+                        , remaining = newRemaining
+                        , indent = s.indent
+                        , row = s.row
+                        , col = s.col + strLength
+                        }
+                        |> pStepCommit
 
-            else
-                parseNext
-                    { src = s.src
-                    , offset = newOffset
-                    , indent = s.indent
-                    , row = s.row
-                    , col = s.col + strLength
-                    }
-                    |> pStepCommit
+                Nothing ->
+                    Bad False (fromState s expecting) ()
         )
 
 
@@ -1124,37 +1332,56 @@ number c =
             Parser.Advanced.map (\n -> \endOffset -> { length = endOffset, number = n })
                 (Parser.Advanced.number c)
                 |= Parser.Advanced.getOffset
+                |. Parser.Advanced.end c.invalid
     in
     Parser
         (\state ->
-            case Parser.Advanced.run parserAdvancedNumberAndStringLength (String.slice state.offset (String.length state.src) state.src) of
-                Ok result ->
-                    Good False result.number (stateAddLengthToOffsetAndColumn result.length state)
-
-                Err _ ->
+            --case state.remaining of
+            --    '0' :: 'x' :: remainingAfterHexMarker ->
+            --        case c.hex of
+            --            Err _ ->
+            --                let
+            --                    relevant : { result : String, state : State }
+            --                    relevant =
+            --                        chompWhileHelp "" (\ch -> Char.isDigit ch || ch == 'a' || ch == 'b' || ch == 'c' || ch == 'd' || ch == 'e' || ch == 'f') (Just 'x') state.row state.col remainingAfterHexMarker state.indent
+            --                in
+            --                case relevant.result of
+            --                    "" ->
+            --                        Bad False (fromState state c.invalid) ()
+            --
+            --                    _ ->
+            --
+            --                                Good False (hexToRes (Hex.fromString relevant.result)) relevant.state
+            --    _ ->
+            let
+                relevant : { result : String, state : State }
+                relevant =
+                    chompWhileHelp "" (\ch -> Char.isAlphaNum ch || ch == '.') state.previousChar state.row state.col state.remaining state.indent
+            in
+            case relevant.result of
+                "" ->
                     Bad False (fromState state c.invalid) ()
+
+                _ ->
+                    case Parser.Advanced.run parserAdvancedNumberAndStringLength relevant.result of
+                        Ok result ->
+                            Good False result.number relevant.state
+
+                        Err _ ->
+                            Bad False (fromState state c.invalid) ()
         )
-
-
-stateAddLengthToOffsetAndColumn : Int -> State -> State
-stateAddLengthToOffsetAndColumn lengthAdded s =
-    { src = s.src
-    , offset = s.offset + lengthAdded
-    , indent = s.indent
-    , row = s.row
-    , col = s.col + lengthAdded
-    }
 
 
 end : x -> Parser x ()
 end x =
     Parser
         (\s ->
-            if String.length s.src == s.offset + 0 then
-                Good False () s
+            case s.remaining of
+                _ :: _ ->
+                    Bad False (fromState s x) ()
 
-            else
-                Bad False (fromState s x) ()
+                [] ->
+                    Good False () s
         )
 
 
@@ -1162,41 +1389,31 @@ anyChar : x -> Parser x Char
 anyChar expecting =
     Parser
         (\s ->
-            let
-                newOffset : Int
-                newOffset =
-                    charOrEnd s.offset s.src
-            in
-            if newOffset == -1 then
-                -- end of source
-                Bad False (fromState s expecting) ()
+            case s.remaining of
+                char :: newRemaining ->
+                    case char of
+                        '\n' ->
+                            Good True
+                                '\n'
+                                { previousChar = Just '\n'
+                                , remaining = newRemaining
+                                , indent = s.indent
+                                , row = s.row + 1
+                                , col = 1
+                                }
 
-            else if newOffset == -2 then
-                -- newline
-                Good True
-                    '\n'
-                    { src = s.src
-                    , offset = s.offset + 1
-                    , indent = s.indent
-                    , row = s.row + 1
-                    , col = 1
-                    }
+                        _ ->
+                            Good True
+                                char
+                                { previousChar = Just char
+                                , remaining = newRemaining
+                                , indent = s.indent
+                                , row = s.row
+                                , col = s.col + 1
+                                }
 
-            else
-                -- found
-                case String.toList (String.slice s.offset newOffset s.src) of
-                    [] ->
-                        Bad False (fromState s expecting) ()
-
-                    c :: _ ->
-                        Good True
-                            c
-                            { src = s.src
-                            , offset = newOffset
-                            , indent = s.indent
-                            , row = s.row
-                            , col = s.col + 1
-                            }
+                [] ->
+                    Bad False (fromState s expecting) ()
         )
 
 
@@ -1207,32 +1424,37 @@ chompWhileWhitespaceFollowedBy (Parser parseNext) =
             let
                 s1 : State
                 s1 =
-                    chompWhileWhitespaceHelp s0.offset s0.row s0.col s0.src s0.indent
+                    chompWhileWhitespaceHelp s0.previousChar s0.row s0.col s0.remaining s0.indent
             in
-            if s1.offset > s0.offset then
+            if s1.row == s0.row && s1.col == s0.col then
                 parseNext s1
-                    |> pStepCommit
 
             else
                 parseNext s1
+                    |> pStepCommit
         )
 
 
-chompWhileWhitespaceHelp : Int -> Int -> Int -> String -> Int -> State
-chompWhileWhitespaceHelp offset row col src indent =
-    case String.slice offset (offset + 1) src of
-        " " ->
-            chompWhileWhitespaceHelp (offset + 1) row (col + 1) src indent
+chompWhileWhitespaceHelp : Maybe Char -> Int -> Int -> List Char -> Int -> State
+chompWhileWhitespaceHelp previousChar row col remaining indent =
+    case remaining of
+        head :: tail ->
+            case head of
+                ' ' ->
+                    chompWhileWhitespaceHelp (Just head) row (col + 1) tail indent
 
-        "\n" ->
-            chompWhileWhitespaceHelp (offset + 1) (row + 1) 1 src indent
+                '\n' ->
+                    chompWhileWhitespaceHelp (Just head) (row + 1) 1 tail indent
 
-        "\u{000D}" ->
-            chompWhileWhitespaceHelp (offset + 1) row (col + 1) src indent
+                '\u{000D}' ->
+                    chompWhileWhitespaceHelp (Just head) row (col + 1) tail indent
 
-        -- empty or non-whitespace
-        _ ->
-            { src = src, offset = offset, indent = indent, row = row, col = col }
+                -- empty or non-whitespace
+                _ ->
+                    { previousChar = previousChar, remaining = remaining, indent = indent, row = row, col = col }
+
+        [] ->
+            { previousChar = previousChar, remaining = remaining, indent = indent, row = row, col = col }
 
 
 while : (Char -> Bool) -> Parser x String
@@ -1240,13 +1462,13 @@ while isGood =
     Parser
         (\s0 ->
             let
-                s1 : State
+                s1 : { result : String, state : State }
                 s1 =
-                    chompWhileHelp isGood s0.offset s0.row s0.col s0.src s0.indent
+                    chompWhileHelp "" isGood s0.previousChar s0.row s0.col s0.remaining s0.indent
             in
-            Good (s1.offset > s0.offset)
-                (String.slice s0.offset s1.offset s0.src)
-                s1
+            Good (s1.result /= "")
+                s1.result
+                s1.state
         )
 
 
@@ -1255,46 +1477,49 @@ whileMap isGood chompedStringToRes =
     Parser
         (\s0 ->
             let
-                s1 : State
+                s1 : { result : String, state : State }
                 s1 =
-                    chompWhileHelp isGood s0.offset s0.row s0.col s0.src s0.indent
+                    chompWhileHelp "" isGood s0.previousChar s0.row s0.col s0.remaining s0.indent
             in
-            Good (s1.offset > s0.offset)
-                (chompedStringToRes (String.slice s0.offset s1.offset s0.src))
-                s1
+            Good (s1.result /= "")
+                (chompedStringToRes s1.result)
+                s1.state
         )
 
 
-chompWhileHelp : (Char -> Bool) -> Int -> Int -> Int -> String -> Int -> State
-chompWhileHelp isGood offset row col src indent =
-    let
-        actualChar : String
-        actualChar =
-            String.slice offset (offset + 1) src
-    in
-    if String.any isGood actualChar then
-        case actualChar of
-            "\n" ->
-                chompWhileHelp isGood (offset + 1) (row + 1) 1 src indent
+chompWhileHelp : String -> (Char -> Bool) -> Maybe Char -> Int -> Int -> List Char -> Int -> { result : String, state : State }
+chompWhileHelp resultSoFar isGood previousChar row col remaining indent =
+    case remaining of
+        head :: tail ->
+            if isGood head then
+                case head of
+                    '\n' ->
+                        chompWhileHelp (resultSoFar ++ String.fromChar head) isGood (Just head) (row + 1) 1 tail indent
 
-            _ ->
-                chompWhileHelp isGood (offset + 1) row (col + 1) src indent
+                    _ ->
+                        chompWhileHelp (resultSoFar ++ String.fromChar head) isGood (Just head) row (col + 1) tail indent
 
-    else if
-        charStringIsUtf16HighSurrogate actualChar
-            && -- String.any iterates over code points (so here just one Char)
-               String.any isGood (String.slice offset (offset + 2) src)
-    then
-        chompWhileHelp isGood (offset + 2) row (col + 1) src indent
+            else
+                { result = resultSoFar
+                , state =
+                    { previousChar = previousChar
+                    , remaining = remaining
+                    , indent = indent
+                    , row = row
+                    , col = col
+                    }
+                }
 
-    else
-        -- no match
-        { src = src
-        , offset = offset
-        , indent = indent
-        , row = row
-        , col = col
-        }
+        [] ->
+            { result = resultSoFar
+            , state =
+                { previousChar = previousChar
+                , remaining = remaining
+                , indent = indent
+                , row = row
+                , col = col
+                }
+            }
 
 
 ifFollowedByWhileExcept :
@@ -1306,33 +1531,47 @@ ifFollowedByWhileExcept :
 ifFollowedByWhileExcept firstIsOkay afterFirstIsOkay exceptionSet expecting =
     Parser
         (\s ->
-            let
-                firstOffset : Int
-                firstOffset =
-                    isSubChar firstIsOkay s.offset s.src
-            in
-            if firstOffset == -1 then
-                Bad False (fromState s expecting) ()
+            case s.remaining of
+                firstChar :: remainingAfterFirstChar ->
+                    if firstIsOkay firstChar then
+                        case firstChar of
+                            '\n' ->
+                                let
+                                    s1 : { result : String, state : State }
+                                    s1 =
+                                        chompWhileHelp "" afterFirstIsOkay (Just firstChar) (s.row + 1) 1 remainingAfterFirstChar s.indent
 
-            else
-                let
-                    s1 : State
-                    s1 =
-                        if firstOffset == -2 then
-                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 s.src s.indent
+                                    name : String
+                                    name =
+                                        String.cons firstChar s1.result
+                                in
+                                if Set.member name exceptionSet then
+                                    Bad False (fromState s expecting) ()
 
-                        else
-                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.src s.indent
+                                else
+                                    Good True name s1.state
 
-                    name : String
-                    name =
-                        String.slice s.offset s1.offset s.src
-                in
-                if Set.member name exceptionSet then
+                            _ ->
+                                let
+                                    s1 : { result : String, state : State }
+                                    s1 =
+                                        chompWhileHelp "" afterFirstIsOkay (Just firstChar) s.row (s.col + 1) remainingAfterFirstChar s.indent
+
+                                    name : String
+                                    name =
+                                        String.cons firstChar s1.result
+                                in
+                                if Set.member name exceptionSet then
+                                    Bad False (fromState s expecting) ()
+
+                                else
+                                    Good True name s1.state
+
+                    else
+                        Bad False (fromState s expecting) ()
+
+                [] ->
                     Bad False (fromState s expecting) ()
-
-                else
-                    Good True name s1
         )
 
 
@@ -1344,25 +1583,31 @@ ifFollowedByWhile :
 ifFollowedByWhile firstIsOkay problemOnFirstNotOkay afterFirstIsOkay =
     Parser
         (\s ->
-            let
-                firstOffset : Int
-                firstOffset =
-                    isSubChar firstIsOkay s.offset s.src
-            in
-            if firstOffset == -1 then
-                Bad False (fromState s problemOnFirstNotOkay) ()
+            case s.remaining of
+                firstChar :: remainingAfterFirstChar ->
+                    if firstIsOkay firstChar then
+                        case firstChar of
+                            '\n' ->
+                                let
+                                    s1 : { result : String, state : State }
+                                    s1 =
+                                        chompWhileHelp "" afterFirstIsOkay (Just firstChar) (s.row + 1) 1 remainingAfterFirstChar s.indent
+                                in
+                                Good True (String.cons firstChar s1.result) s1.state
 
-            else
-                let
-                    s1 : State
-                    s1 =
-                        if firstOffset == -2 then
-                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 s.src s.indent
+                            _ ->
+                                let
+                                    s1 : { result : String, state : State }
+                                    s1 =
+                                        chompWhileHelp "" afterFirstIsOkay (Just firstChar) s.row (s.col + 1) remainingAfterFirstChar s.indent
+                                in
+                                Good True (String.cons firstChar s1.result) s1.state
 
-                        else
-                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.src s.indent
-                in
-                Good True (String.slice s.offset s1.offset s.src) s1
+                    else
+                        Bad False (fromState s problemOnFirstNotOkay) ()
+
+                [] ->
+                    Bad False (fromState s problemOnFirstNotOkay) ()
         )
 
 
@@ -1374,26 +1619,27 @@ anyCharFollowedByWhileMap :
 anyCharFollowedByWhileMap chompedStringToRes expectingAnyChar afterFirstIsOkay =
     Parser
         (\s ->
-            let
-                firstOffset : Int
-                firstOffset =
-                    charOrEnd s.offset s.src
-            in
-            if firstOffset == -1 then
-                -- end of source
-                Bad False (fromState s expectingAnyChar) ()
+            case s.remaining of
+                firstChar :: remainingAfterFirstChar ->
+                    case firstChar of
+                        '\n' ->
+                            let
+                                s1 : { result : String, state : State }
+                                s1 =
+                                    chompWhileHelp "" afterFirstIsOkay (Just firstChar) (s.row + 1) 1 remainingAfterFirstChar s.indent
+                            in
+                            Good True (chompedStringToRes (String.cons firstChar s1.result)) s1.state
 
-            else
-                let
-                    s1 : State
-                    s1 =
-                        if firstOffset == -2 then
-                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 s.src s.indent
+                        _ ->
+                            let
+                                s1 : { result : String, state : State }
+                                s1 =
+                                    chompWhileHelp "" afterFirstIsOkay (Just firstChar) s.row (s.col + 1) remainingAfterFirstChar s.indent
+                            in
+                            Good True (chompedStringToRes (String.cons firstChar s1.result)) s1.state
 
-                        else
-                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.src s.indent
-                in
-                Good True (chompedStringToRes (String.slice s.offset s1.offset s.src)) s1
+                [] ->
+                    Bad False (fromState s expectingAnyChar) ()
         )
 
 
@@ -1476,8 +1722,8 @@ withIndentSetToColumn (Parser parse) =
 
 changeIndent : Int -> State -> State
 changeIndent newIndent s =
-    { src = s.src
-    , offset = s.offset
+    { remaining = s.remaining
+    , previousChar = s.previousChar
     , indent = newIndent
     , row = s.row
     , col = s.col
@@ -1532,111 +1778,11 @@ mapWithStartAndEndPosition combineStartAndResult (Parser parse) =
         )
 
 
+isNextCharAlphaNumOrUnderscore : List Char -> Bool
+isNextCharAlphaNumOrUnderscore remaining =
+    case remaining of
+        head :: _ ->
+            Char.Extra.isAlphaNumFast head || head == '_'
 
--- LOW-LEVEL HELPERS
-
-
-{-| When making a fast parser, you want to avoid allocation as much as
-possible. That means you never want to mess with the source string, only
-keep track of an offset into that string.
-
-You use `isSubString` like this:
-
-    isSubString "let" offset row col "let x = 4 in x"
-        --==> ( newOffset, newRow, newCol )
-
-You are looking for `"let"` at a given `offset`. On failure, the
-`newOffset` is `-1`. On success, the `newOffset` is the new offset. With
-our `"let"` example, it would be `offset + 3`.
-
-**Important note:** Assumes smallString does not contain \\n
-or 2-part UTF-16 characters
-
--}
-isSubString : String -> Int -> Int -> String -> Int
-isSubString smallString smallStringLength offset bigString =
-    let
-        offsetAfter : Int
-        offsetAfter =
-            offset + smallStringLength
-    in
-    if String.slice offset offsetAfter bigString == smallString ++ "" then
-        offsetAfter
-
-    else
-        -1
-
-
-{-| Again, when parsing, you want to allocate as little as possible.
-So this function lets you say:
-
-    isSubChar isSpace offset "this is the source string"
-        --==> newOffset
-
-The `(Char -> Bool)` argument is called a predicate.
-The `newOffset` value can be a few different things:
-
-  - `-1` means that the predicate failed
-  - `-2` means the predicate succeeded with a `\n`
-  - otherwise you will get `offset + 1` or `offset + 2`
-    depending on whether the UTF16 character is one or two
-    words wide.
-
--}
-isSubChar : (Char -> Bool) -> Int -> String -> Int
-isSubChar predicate offset string =
-    -- https://github.com/elm/parser/blob/1.1.0/src/Elm/Kernel/Parser.js#L37
-    let
-        actualChar : String
-        actualChar =
-            String.slice offset (offset + 1) string
-    in
-    if String.any predicate actualChar then
-        case actualChar of
-            "\n" ->
-                -2
-
-            _ ->
-                offset + 1
-
-    else if
-        charStringIsUtf16HighSurrogate actualChar
-            && -- String.any iterates over code points (so here just one Char)
-               String.any predicate (String.slice offset (offset + 2) string)
-    then
-        offset + 2
-
-    else
-        -1
-
-
-isSubCharSinglePart : (Char -> Bool) -> Int -> String -> Bool
-isSubCharSinglePart predicate offset string =
-    String.any predicate (String.slice offset (offset + 1) string)
-
-
-charOrEnd : Int -> String -> Int
-charOrEnd offset string =
-    let
-        actualChar : String
-        actualChar =
-            String.slice offset (offset + 1) string
-    in
-    case actualChar of
-        "\n" ->
-            -2
-
-        "" ->
-            -1
-
-        _ ->
-            if charStringIsUtf16HighSurrogate actualChar then
-                offset + 2
-
-            else
-                offset + 1
-
-
-charStringIsUtf16HighSurrogate : String -> Bool
-charStringIsUtf16HighSurrogate charString =
-    charString |> String.any (\c -> Basics.isNaN (Basics.toFloat (Char.toCode c)))
+        [] ->
+            False

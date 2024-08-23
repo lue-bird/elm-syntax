@@ -8,6 +8,10 @@ module Elm.Parser.Layout exposing
     , maybeLayoutBacktrackable
     , maybeLayoutUntilIgnored
     , maybeLayoutUntilIgnoredBacktrackable
+    , maybeLayoutUntilIgnoredSymbol1
+    , maybeLayoutUntilIgnoredSymbol1Backtrackable
+    , maybeLayoutUntilIgnoredSymbol2
+    , maybeLayoutUntilIgnoredSymbol2Backtrackable
     , moduleLevelIndentationFollowedBy
     , onTopIndentationFollowedBy
     , optimisticLayout
@@ -29,11 +33,39 @@ maybeLayoutUntilIgnored endParser endSymbol =
         |> endsPositivelyIndentedPlus (String.length endSymbol)
 
 
+maybeLayoutUntilIgnoredSymbol1 : Char -> Parser Comments
+maybeLayoutUntilIgnoredSymbol1 endChar =
+    whitespaceAndCommentsUntilEndComments
+        (ParserFast.symbol1 endChar Rope.empty)
+        |> endsPositivelyIndentedPlus 1
+
+
+maybeLayoutUntilIgnoredSymbol2 : Char -> Char -> Parser Comments
+maybeLayoutUntilIgnoredSymbol2 endChar0 endChar1 =
+    whitespaceAndCommentsUntilEndComments
+        (ParserFast.symbol2 endChar0 endChar1 Rope.empty)
+        |> endsPositivelyIndentedPlus 2
+
+
 maybeLayoutUntilIgnoredBacktrackable : (String -> Comments -> Parser Comments) -> String -> Parser Comments
 maybeLayoutUntilIgnoredBacktrackable endParser endSymbol =
     whitespaceAndCommentsUntilEndComments
         (endParser endSymbol Rope.empty)
         |> endsPositivelyIndentedPlusBacktrackable (String.length endSymbol)
+
+
+maybeLayoutUntilIgnoredSymbol1Backtrackable : Char -> Parser Comments
+maybeLayoutUntilIgnoredSymbol1Backtrackable endChar =
+    whitespaceAndCommentsUntilEndComments
+        (ParserFast.symbol1 endChar Rope.empty)
+        |> endsPositivelyIndentedPlusBacktrackable 1
+
+
+maybeLayoutUntilIgnoredSymbol2Backtrackable : Char -> Char -> Parser Comments
+maybeLayoutUntilIgnoredSymbol2Backtrackable endChar0 endChar1 =
+    whitespaceAndCommentsUntilEndComments
+        (ParserFast.symbol2 endChar0 endChar1 Rope.empty)
+        |> endsPositivelyIndentedPlusBacktrackable 2
 
 
 whitespaceAndCommentsUntilEndComments : Parser Comments -> Parser Comments
@@ -66,14 +98,14 @@ whitespaceAndCommentsOrEmpty =
         --
         -- since comments are comparatively rare
         -- but expensive to check for, we allow shortcutting
-        (ParserFast.offsetSourceAndThen
-            (\offset source ->
-                case source |> String.slice offset (offset + 2) of
-                    "--" ->
+        (ParserFast.andThenWithRemaining
+            (\remaining ->
+                case remaining of
+                    '-' :: '-' :: _ ->
                         -- this will always succeed from here, so no need to fall back to Rope.empty
                         fromSingleLineCommentNode
 
-                    "{-" ->
+                    '{' :: '-' :: _ ->
                         fromMultilineCommentNodeOrEmptyOnProblem
 
                     _ ->

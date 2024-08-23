@@ -22,7 +22,7 @@ exposeDefinition =
             }
         )
         (ParserFast.symbolFollowedBy "exposing"
-            (Layout.maybeLayoutUntilIgnored ParserFast.symbol "(")
+            (Layout.maybeLayoutUntilIgnoredSymbol1 '(')
         )
         Layout.optimisticLayout
         exposingListInner
@@ -48,7 +48,7 @@ exposingListInner =
             exposable
             Layout.maybeLayout
             (ParserWithComments.many
-                (ParserFast.symbolFollowedBy ","
+                (ParserFast.symbol1FollowedBy ','
                     (Layout.maybeAroundBothSides exposable)
                 )
             )
@@ -60,7 +60,7 @@ exposingListInner =
                     All { start = start, end = end }
                 }
             )
-            (ParserFast.symbolFollowedBy ".." Layout.maybeLayout)
+            (ParserFast.symbol2FollowedBy '.' '.' Layout.maybeLayout)
         )
 
 
@@ -75,7 +75,7 @@ exposable =
 infixExpose : ParserFast.Parser (WithComments (Node TopLevelExpose))
 infixExpose =
     ParserFast.map2 (\infixName () -> { comments = Rope.empty, syntax = InfixExpose infixName })
-        (ParserFast.symbolFollowedBy "("
+        (ParserFast.symbol1FollowedBy '('
             (ParserFast.ifFollowedByWhile
                 (\c -> c /= ')')
                 (\c -> c /= ')')
@@ -114,10 +114,10 @@ typeExpose =
                         { comments = comments, range = { start = start, end = end } }
                     )
                     (ParserFast.map2 (\left right -> left |> Rope.prependTo right)
-                        (ParserFast.symbolFollowedBy "("
-                            (Layout.maybeLayoutUntilIgnored ParserFast.symbol "..")
+                        (ParserFast.symbol1FollowedBy '('
+                            (Layout.maybeLayoutUntilIgnoredSymbol2 '.' '.')
                         )
-                        (Layout.maybeLayoutUntilIgnored ParserFast.symbol ")")
+                        (Layout.maybeLayoutUntilIgnoredSymbol1 ')')
                     )
                 )
             )

@@ -289,7 +289,7 @@ functionAfterDocumentation =
                             }
                         }
                 )
-                (ParserFast.symbolFollowedBy ":" Layout.maybeLayout)
+                (ParserFast.symbol1FollowedBy ':' Layout.maybeLayout)
                 TypeAnnotation.typeAnnotation
                 (Layout.layoutStrictFollowedBy
                     (Node.parserCore Tokens.functionName)
@@ -388,7 +388,7 @@ functionDeclarationWithoutDocumentation =
                         , typeAnnotation = typeAnnotationResult.syntax
                         }
                 )
-                (ParserFast.symbolFollowedBy ":" Layout.maybeLayout)
+                (ParserFast.symbol1FollowedBy ':' Layout.maybeLayout)
                 TypeAnnotation.typeAnnotation
                 (Layout.layoutStrictFollowedBy
                     (Node.parserCore Tokens.functionName)
@@ -468,11 +468,11 @@ infixDeclaration =
         (Node.parserCore
             (ParserFast.map2
                 (\prefixOperator () -> prefixOperator)
-                (ParserFast.symbolFollowedBy "(" Tokens.prefixOperatorToken)
+                (ParserFast.symbol1FollowedBy '(' Tokens.prefixOperatorToken)
                 Tokens.parensEnd
             )
         )
-        (Layout.maybeLayoutUntilIgnored ParserFast.symbol "=")
+        (Layout.maybeLayoutUntilIgnoredSymbol1 '=')
         Layout.maybeLayout
         (Node.parserCore Tokens.functionName)
         |> Node.parser
@@ -505,7 +505,7 @@ portDeclarationAfterDocumentation =
         )
         (ParserFast.keywordFollowedBy "port" Layout.maybeLayout)
         (Node.parserCore Tokens.functionName)
-        (Layout.maybeLayoutUntilIgnored ParserFast.symbol ":")
+        (Layout.maybeLayoutUntilIgnoredSymbol1 ':')
         Layout.maybeLayout
         typeAnnotation
 
@@ -537,7 +537,7 @@ portDeclarationWithoutDocumentation =
         )
         (ParserFast.keywordFollowedBy "port" Layout.maybeLayout)
         (Node.parserCore Tokens.functionName)
-        (Layout.maybeLayoutUntilIgnored ParserFast.symbol ":")
+        (Layout.maybeLayoutUntilIgnoredSymbol1 ':')
         Layout.maybeLayout
         typeAnnotation
 
@@ -617,7 +617,7 @@ customTypeDefinitionAfterDocumentationAfterTypePrefix =
                     , syntax = variantResult.syntax
                     }
                 )
-                (Layout.maybeLayoutUntilIgnoredBacktrackable ParserFast.symbol "|")
+                (Layout.maybeLayoutUntilIgnoredSymbol1Backtrackable '|')
                 Layout.maybeLayout
                 valueConstructor
             )
@@ -751,7 +751,7 @@ customTypeDefinitionWithoutDocumentationAfterTypePrefix =
                     , syntax = variantResult.syntax
                     }
                 )
-                (Layout.maybeLayoutUntilIgnoredBacktrackable ParserFast.symbol "|")
+                (Layout.maybeLayoutUntilIgnoredSymbol1Backtrackable '|')
                 Layout.maybeLayout
                 valueConstructor
             )

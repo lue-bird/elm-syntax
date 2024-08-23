@@ -1,19 +1,20 @@
 module ParserFast exposing
     ( Parser, run
-    , int, number, symbol, symbolBacktrackable, symbolFollowedBy, keyword, keywordFollowedBy, whileMap, ifFollowedByWhile, ifFollowedByWhileExcept, anyChar, end
+    , int, number, symbol1, symbol1Backtrackable, symbol2, symbol3, symbol, symbol1FollowedBy, symbol2FollowedBy, symbolFollowedBy, keyword, keywordFollowedBy, whileMap, ifFollowedByWhile, ifFollowedByWhileExcept, anyChar, end
     , succeed, problem, lazy, map, map2, map3, map4, map5, map6, map7, map8, map9, validate
     , orSucceed, oneOf2, oneOf2Map, oneOf2OrSucceed, oneOf3, oneOf4, oneOf
     , loopWhileSucceeds, loopUntil
     , chompWhileWhitespaceFollowedBy, nestableMultiComment
     , withIndentSetToColumn, withIndent, columnIndentAndThen, validateEndColumnIndentation, validateEndColumnIndentationBacktrackable
-    , mapWithStartPosition, mapWithEndPosition, mapWithStartAndEndPosition, columnAndThen, offsetSourceAndThen
+    , mapWithStartPosition, mapWithEndPosition, mapWithStartAndEndPosition, columnAndThen
+    , andThenWithPreviousChar, andThenWithRemaining
     )
 
 {-|
 
 @docs Parser, run
 
-@docs int, number, symbol, symbolBacktrackable, symbolFollowedBy, keyword, keywordFollowedBy, whileMap, ifFollowedByWhile, ifFollowedByWhileExcept, anyChar, end
+@docs int, number, symbol1, symbol1Backtrackable, symbol2, symbol3, symbol, symbol1FollowedBy, symbol2FollowedBy, symbolFollowedBy, keyword, keywordFollowedBy, whileMap, ifFollowedByWhile, ifFollowedByWhileExcept, anyChar, end
 
 
 # Flow
@@ -33,7 +34,12 @@ module ParserFast exposing
 # Indentation, Positions and source
 
 @docs withIndentSetToColumn, withIndent, columnIndentAndThen, validateEndColumnIndentation, validateEndColumnIndentationBacktrackable
-@docs mapWithStartPosition, mapWithEndPosition, mapWithStartAndEndPosition, columnAndThen, offsetSourceAndThen
+@docs mapWithStartPosition, mapWithEndPosition, mapWithStartAndEndPosition, columnAndThen
+
+
+# Look behind and ahead
+
+@docs andThenWithPreviousChar, andThenWithRemaining
 
 -}
 
@@ -191,19 +197,14 @@ validateEndColumnIndentationBacktrackable isOkay problemOnIsNotOkay parser =
     A.validateEndColumnIndentationBacktrackable isOkay (Parser.Problem problemOnIsNotOkay) parser
 
 
-{-| Editors think of code as a grid, but behind the scenes it is just a flat
-array of UTF-16 characters. `getOffset` tells you your index in that flat
-array. So if you chomp `"\n\n\n\n"` you are on row 5, column 1, and offset 4.
+andThenWithPreviousChar : (Maybe Char -> Parser res) -> Parser res
+andThenWithPreviousChar callback =
+    A.andThenWithPreviousChar callback
 
-**Note:** JavaScript uses a somewhat odd version of UTF-16 strings, so a single
-character may take two slots. So in JavaScript, `'abc'.length === 3` but
-`'🙈🙉🙊'.length === 6`. Try it out! And since Elm runs in JavaScript, the offset
-moves by those rules.
 
--}
-offsetSourceAndThen : (Int -> String -> Parser a) -> Parser a
-offsetSourceAndThen =
-    A.offsetSourceAndThen
+andThenWithRemaining : (List Char -> Parser a) -> Parser a
+andThenWithRemaining callback =
+    A.andThenWithRemaining callback
 
 
 {-| Parse 2 parser in sequence and combine their results
@@ -479,12 +480,36 @@ symbol str res =
     A.symbol str (Parser.ExpectingSymbol str) res
 
 
-{-| Make sure the given String does not contain \\n
+{-| Make sure the given Char does not contain \\n
+or 2-part UTF-16 characters
+-}
+symbol1 : Char -> res -> Parser res
+symbol1 symbolChar res =
+    A.symbol1 symbolChar (Parser.ExpectingSymbol (String.fromChar symbolChar)) res
+
+
+{-| Make sure the given Chars do not contain \\n
+or 2-part UTF-16 characters
+-}
+symbol2 : Char -> Char -> res -> Parser res
+symbol2 symbolChar0 symbolChar1 res =
+    A.symbol2 symbolChar0 symbolChar1 (Parser.ExpectingSymbol (String.fromList [ symbolChar0, symbolChar1 ])) res
+
+
+{-| Make sure the given Chars do not contain \\n
+or 2-part UTF-16 characters
+-}
+symbol3 : Char -> Char -> Char -> res -> Parser res
+symbol3 symbolChar0 symbolChar1 symbolChar2 res =
+    A.symbol3 symbolChar0 symbolChar1 symbolChar2 (Parser.ExpectingSymbol (String.fromList [ symbolChar0, symbolChar1, symbolChar2 ])) res
+
+
+{-| Make sure the given Char does not contain \\n
 or 2-part UTF-16 characters.
 -}
-symbolBacktrackable : String -> res -> Parser res
-symbolBacktrackable str res =
-    A.symbolBacktrackable str (Parser.ExpectingSymbol str) res
+symbol1Backtrackable : Char -> res -> Parser res
+symbol1Backtrackable symbolChar res =
+    A.symbol1Backtrackable symbolChar (Parser.ExpectingSymbol (String.fromChar symbolChar)) res
 
 
 {-| Make sure the given String isn't empty and does not contain \\n
@@ -493,6 +518,22 @@ or 2-part UTF-16 characters.
 symbolFollowedBy : String -> Parser next -> Parser next
 symbolFollowedBy str nextParser =
     A.symbolFollowedBy str (Parser.ExpectingSymbol str) nextParser
+
+
+{-| Make sure the given Char does not contain \\n
+or 2-part UTF-16 characters
+-}
+symbol1FollowedBy : Char -> Parser next -> Parser next
+symbol1FollowedBy symbolChar nextParser =
+    A.symbol1FollowedBy symbolChar (Parser.ExpectingSymbol (String.fromChar symbolChar)) nextParser
+
+
+{-| Make sure the given Char does not contain \\n
+or 2-part UTF-16 characters
+-}
+symbol2FollowedBy : Char -> Char -> Parser next -> Parser next
+symbol2FollowedBy symbolChar0 symbolChar1 nextParser =
+    A.symbol2FollowedBy symbolChar0 symbolChar1 (Parser.ExpectingSymbol (String.fromList [ symbolChar0, symbolChar1 ])) nextParser
 
 
 {-| Parse keywords like `let`, `case`, and `type`.

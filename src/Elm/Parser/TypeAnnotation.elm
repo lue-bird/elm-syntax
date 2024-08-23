@@ -36,7 +36,7 @@ typeAnnotation =
                         , syntax = typeAnnotationResult.syntax
                         }
                 )
-                (Layout.maybeLayoutUntilIgnoredBacktrackable ParserFast.symbol "->")
+                (Layout.maybeLayoutUntilIgnoredSymbol2Backtrackable '-' '>')
                 Layout.maybeLayout
                 (ParserFast.lazy (\() -> typeAnnotation))
             )
@@ -64,9 +64,9 @@ typeAnnotationNoFnIncludingTypedWithArguments =
 
 parensTypeAnnotation : Parser (WithComments (Node TypeAnnotation))
 parensTypeAnnotation =
-    ParserFast.symbolFollowedBy "("
+    ParserFast.symbol1FollowedBy '('
         (ParserFast.oneOf2
-            (ParserFast.symbol ")" { comments = Rope.empty, syntax = TypeAnnotation.Unit })
+            (ParserFast.symbol1 ')' { comments = Rope.empty, syntax = TypeAnnotation.Unit })
             (ParserFast.map4
                 (\commentsBeforeFirstPart firstPart commentsAfterFirstPart lastToSecondPart ->
                     { comments =
@@ -101,7 +101,7 @@ parensTypeAnnotation =
                             , syntax = typeAnnotationResult.syntax
                             }
                         )
-                        (ParserFast.symbolFollowedBy "," Layout.maybeLayout)
+                        (ParserFast.symbol1FollowedBy ',' Layout.maybeLayout)
                         typeAnnotation
                         Layout.maybeLayout
                     )
@@ -141,7 +141,7 @@ recordTypeAnnotation =
                     , syntax = afterCurlyResult.syntax
                     }
         )
-        (ParserFast.symbolFollowedBy "{" Layout.maybeLayout)
+        (ParserFast.symbol1FollowedBy '{' Layout.maybeLayout)
         (ParserFast.oneOf2
             (ParserFast.map4
                 (\firstNameNode commentsAfterFirstName afterFirstName () ->
@@ -161,7 +161,7 @@ recordTypeAnnotation =
                 (Node.parserCore Tokens.functionName)
                 Layout.maybeLayout
                 (ParserFast.oneOf2
-                    (ParserFast.symbolFollowedBy "|"
+                    (ParserFast.symbol1FollowedBy '|'
                         (ParserFast.mapWithStartAndEndPosition
                             (\start extension end ->
                                 { comments = extension.comments
@@ -187,18 +187,18 @@ recordTypeAnnotation =
                                     }
                             }
                         )
-                        (ParserFast.symbolFollowedBy ":" Layout.maybeLayout)
+                        (ParserFast.symbol1FollowedBy ':' Layout.maybeLayout)
                         typeAnnotation
                         Layout.maybeLayout
                         (ParserFast.orSucceed
-                            (ParserFast.symbolFollowedBy "," recordFieldsTypeAnnotation)
+                            (ParserFast.symbol1FollowedBy ',' recordFieldsTypeAnnotation)
                             { comments = Rope.empty, syntax = [] }
                         )
                     )
                 )
                 Tokens.curlyEnd
             )
-            (ParserFast.symbol "}" Nothing)
+            (ParserFast.symbol1 '}' Nothing)
         )
         |> Node.parser
 
@@ -215,7 +215,7 @@ type RecordFieldsOrExtensionAfterName
 
 recordFieldsTypeAnnotation : Parser (WithComments TypeAnnotation.RecordDefinition)
 recordFieldsTypeAnnotation =
-    ParserWithComments.sepBy1 ","
+    ParserWithComments.sepBy1 ','
         (ParserFast.map2
             (\commentsBefore fields ->
                 { comments = commentsBefore |> Rope.prependTo fields.comments
@@ -242,7 +242,7 @@ recordFieldDefinition =
         )
         Layout.maybeLayout
         (Node.parserCore Tokens.functionName)
-        (Layout.maybeLayoutUntilIgnored ParserFast.symbol ":")
+        (Layout.maybeLayoutUntilIgnoredSymbol1 ':')
         Layout.maybeLayout
         typeAnnotation
         -- This extra whitespace is just included for compatibility with earlier version
@@ -291,7 +291,7 @@ maybeDotTypeNamesTuple =
                     Just ( qualificationAfter, unqualified ) ->
                         Just ( firstName :: qualificationAfter, unqualified )
             )
-            (ParserFast.symbolFollowedBy "." Tokens.typeName)
+            (ParserFast.symbol1FollowedBy '.' Tokens.typeName)
             (ParserFast.lazy (\() -> maybeDotTypeNamesTuple))
         )
         Nothing

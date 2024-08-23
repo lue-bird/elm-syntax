@@ -62,13 +62,13 @@ inToken =
 escapedCharValueMap : (Char -> res) -> ParserFast.Parser res
 escapedCharValueMap charToRes =
     ParserFast.oneOf
-        [ ParserFast.symbol "'" (charToRes '\'')
-        , ParserFast.symbol "\"" (charToRes '"')
-        , ParserFast.symbol "n" (charToRes '\n')
-        , ParserFast.symbol "t" (charToRes '\t')
+        [ ParserFast.symbol1 '\'' (charToRes '\'')
+        , ParserFast.symbol1 '"' (charToRes '"')
+        , ParserFast.symbol1 'n' (charToRes '\n')
+        , ParserFast.symbol1 't' (charToRes '\t')
         , -- Eventhough Elm-format will change \r to a unicode version. When you dont use elm-format, this will not happen.
-          ParserFast.symbol "r" (charToRes '\u{000D}')
-        , ParserFast.symbol "\\" (charToRes '\\')
+          ParserFast.symbol1 'r' (charToRes '\u{000D}')
+        , ParserFast.symbol1 '\\' (charToRes '\\')
         , ParserFast.map2
             (\hex () ->
                 case String.toLower hex |> Hex.fromString of
@@ -78,39 +78,41 @@ escapedCharValueMap charToRes =
                     Err _ ->
                         charToRes '\u{0000}'
             )
-            (ParserFast.symbolFollowedBy "u{"
+            (ParserFast.symbol2FollowedBy 'u'
+                '{'
                 (ParserFast.ifFollowedByWhile
                     Char.isHexDigit
                     Char.isHexDigit
                 )
             )
-            (ParserFast.symbol "}" ())
+            (ParserFast.symbol1 '}' ())
         ]
 
 
 slashEscapedCharValue : ParserFast.Parser Char
 slashEscapedCharValue =
-    ParserFast.symbolFollowedBy "\\" (escapedCharValueMap identity)
+    ParserFast.symbol1FollowedBy '\\' (escapedCharValueMap identity)
 
 
 characterLiteral : ParserFast.Parser Char
 characterLiteral =
     ParserFast.map2
         (\res () -> res)
-        (ParserFast.symbolFollowedBy "'"
+        (ParserFast.symbol1FollowedBy '\''
             (ParserFast.oneOf2
                 slashEscapedCharValue
                 ParserFast.anyChar
             )
         )
-        (ParserFast.symbol "'" ())
+        (ParserFast.symbol1 '\'' ())
 
 
 singleOrTripleQuotedStringLiteral : ParserFast.Parser String
 singleOrTripleQuotedStringLiteral =
-    ParserFast.symbolFollowedBy "\""
+    ParserFast.symbol1FollowedBy '"'
         (ParserFast.oneOf2
-            (ParserFast.symbolFollowedBy "\"\""
+            (ParserFast.symbol2FollowedBy '"'
+                '"'
                 tripleQuotedStringLiteralOfterTripleDoubleQuote
             )
             singleQuotedStringLiteralAfterDoubleQuote
@@ -119,9 +121,9 @@ singleOrTripleQuotedStringLiteral =
 
 singleQuotedStringLiteralAfterDoubleQuote : ParserFast.Parser String
 singleQuotedStringLiteralAfterDoubleQuote =
-    ParserFast.loopUntil (ParserFast.symbol "\"" ())
+    ParserFast.loopUntil (ParserFast.symbol1 '"' ())
         (ParserFast.oneOf2
-            (ParserFast.symbolFollowedBy "\\" (escapedCharValueMap String.fromChar))
+            (ParserFast.symbol1FollowedBy '\\' (escapedCharValueMap String.fromChar))
             (ParserFast.whileMap (\c -> c /= '"' && c /= '\\') identity)
         )
         ""
@@ -133,10 +135,10 @@ singleQuotedStringLiteralAfterDoubleQuote =
 
 tripleQuotedStringLiteralOfterTripleDoubleQuote : ParserFast.Parser String
 tripleQuotedStringLiteralOfterTripleDoubleQuote =
-    ParserFast.loopUntil (ParserFast.symbol "\"\"\"" ())
+    ParserFast.loopUntil (ParserFast.symbol3 '"' '"' '"' ())
         (ParserFast.oneOf3
-            (ParserFast.symbol "\"" "\"")
-            (ParserFast.symbolFollowedBy "\\" (escapedCharValueMap String.fromChar))
+            (ParserFast.symbol1 '"' "\"")
+            (ParserFast.symbol1FollowedBy '\\' (escapedCharValueMap String.fromChar))
             (ParserFast.whileMap (\c -> c /= '"' && c /= '\\') identity)
         )
         ""
@@ -217,31 +219,31 @@ prefixOperatorToken =
 minusFollowedBySingleWhitespace : ParserFast.Parser res -> ParserFast.Parser res
 minusFollowedBySingleWhitespace next =
     ParserFast.oneOf3
-        (ParserFast.symbolFollowedBy "- " next)
-        (ParserFast.symbolFollowedBy "-\n" next)
-        (ParserFast.symbolFollowedBy "-\u{000D}" next)
+        (ParserFast.symbol2FollowedBy '-' ' ' next)
+        (ParserFast.symbol2FollowedBy '-' '\n' next)
+        (ParserFast.symbol2FollowedBy '-' '\u{000D}' next)
 
 
 squareEnd : ParserFast.Parser ()
 squareEnd =
-    ParserFast.symbol "]" ()
+    ParserFast.symbol1 ']' ()
 
 
 curlyEnd : ParserFast.Parser ()
 curlyEnd =
-    ParserFast.symbol "}" ()
+    ParserFast.symbol1 '}' ()
 
 
 arrowRight : ParserFast.Parser ()
 arrowRight =
-    ParserFast.symbol "->" ()
+    ParserFast.symbol2 '-' '>' ()
 
 
 equal : ParserFast.Parser ()
 equal =
-    ParserFast.symbol "=" ()
+    ParserFast.symbol1 '=' ()
 
 
 parensEnd : ParserFast.Parser ()
 parensEnd =
-    ParserFast.symbol ")" ()
+    ParserFast.symbol1 ')' ()

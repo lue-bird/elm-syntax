@@ -65,7 +65,7 @@ maybeComposedWith =
                 , syntax = PatternComposedWithCons patternResult.syntax
                 }
             )
-            (ParserFast.symbolFollowedBy "::" Layout.maybeLayout)
+            (ParserFast.symbol2FollowedBy ':' ':' Layout.maybeLayout)
             pattern
         )
         { comments = Rope.empty, syntax = PatternComposedWithNothing () }
@@ -81,7 +81,7 @@ parensPattern =
             , syntax = contentResult.syntax
             }
         )
-        (ParserFast.symbolFollowedBy "(" Layout.maybeLayout)
+        (ParserFast.symbol1FollowedBy '(' Layout.maybeLayout)
         -- yes, (  ) is a valid pattern but not a valid type or expression
         (ParserFast.oneOf2
             (ParserFast.map3
@@ -103,12 +103,12 @@ parensPattern =
                 Layout.maybeLayout
                 (ParserWithComments.until
                     Tokens.parensEnd
-                    (ParserFast.symbolFollowedBy ","
+                    (ParserFast.symbol1FollowedBy ','
                         (Layout.maybeAroundBothSides pattern)
                     )
                 )
             )
-            (ParserFast.symbol ")" { comments = Rope.empty, syntax = UnitPattern })
+            (ParserFast.symbol1 ')' { comments = Rope.empty, syntax = UnitPattern })
         )
         |> Node.parser
 
@@ -157,9 +157,9 @@ listPattern =
                     , syntax = ListPattern elements.syntax
                     }
         )
-        (ParserFast.symbolFollowedBy "[" Layout.maybeLayout)
+        (ParserFast.symbol1FollowedBy '[' Layout.maybeLayout)
         (ParserFast.oneOf2
-            (ParserFast.symbol "]" Nothing)
+            (ParserFast.symbol1 ']' Nothing)
             (ParserFast.map4
                 (\head commentsAfterHead tail () ->
                     Just
@@ -173,7 +173,7 @@ listPattern =
                 pattern
                 Layout.maybeLayout
                 (ParserWithComments.many
-                    (ParserFast.symbolFollowedBy ","
+                    (ParserFast.symbol1FollowedBy ','
                         (Layout.maybeAroundBothSides pattern)
                     )
                 )
@@ -222,13 +222,13 @@ patternNotDirectlyComposing =
 
 allPattern : Parser (WithComments (Node Pattern))
 allPattern =
-    ParserFast.symbol "_" { comments = Rope.empty, syntax = AllPattern }
+    ParserFast.symbol1 '_' { comments = Rope.empty, syntax = AllPattern }
         |> Node.parser
 
 
 unitPattern : Parser (WithComments (Node Pattern))
 unitPattern =
-    ParserFast.symbol "()" { comments = Rope.empty, syntax = UnitPattern }
+    ParserFast.symbol2 '(' ')' { comments = Rope.empty, syntax = UnitPattern }
         |> Node.parser
 
 
@@ -256,7 +256,7 @@ maybeDotTypeNamesTuple =
                     Just ( qualificationAfter, unqualified ) ->
                         Just ( startName :: qualificationAfter, unqualified )
             )
-            (ParserFast.symbolFollowedBy "." Tokens.typeName)
+            (ParserFast.symbol1FollowedBy '.' Tokens.typeName)
             (ParserFast.lazy (\() -> maybeDotTypeNamesTuple))
         )
         Nothing
@@ -333,7 +333,7 @@ recordPattern =
                     , syntax = RecordPattern elements.syntax
                     }
         )
-        (ParserFast.symbolFollowedBy "{" Layout.maybeLayout)
+        (ParserFast.symbol1FollowedBy '{' Layout.maybeLayout)
         (ParserFast.oneOf2
             (ParserFast.map4
                 (\head commentsAfterHead tail () ->
@@ -353,14 +353,14 @@ recordPattern =
                             , syntax = name
                             }
                         )
-                        (ParserFast.symbolFollowedBy "," Layout.maybeLayout)
+                        (ParserFast.symbol1FollowedBy ',' Layout.maybeLayout)
                         (Node.parserCore Tokens.functionName)
                         Layout.maybeLayout
                     )
                 )
                 Tokens.curlyEnd
             )
-            (ParserFast.symbol "}" Nothing)
+            (ParserFast.symbol1 '}' Nothing)
         )
         |> Node.parser
 

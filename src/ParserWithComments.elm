@@ -101,7 +101,7 @@ manyWithoutReverse p =
         )
 
 
-sepBy1 : String -> Parser (WithComments a) -> Parser (WithComments (List a))
+sepBy1 : Char -> Parser (WithComments a) -> Parser (WithComments (List a))
 sepBy1 sep p =
     ParserFast.map2
         (\head tail ->
@@ -110,4 +110,4 @@ sepBy1 sep p =
             }
         )
         p
-        (many (ParserFast.symbolFollowedBy sep p))
+        (many (ParserFast.symbol1FollowedBy sep p))

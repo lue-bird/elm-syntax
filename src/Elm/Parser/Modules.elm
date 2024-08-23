@@ -30,7 +30,7 @@ effectWhereClause =
             }
         )
         Tokens.functionName
-        (Layout.maybeLayoutUntilIgnored ParserFast.symbol "=")
+        (Layout.maybeLayoutUntilIgnoredSymbol1 '=')
         Layout.maybeLayout
         (Node.parserCore Tokens.typeName)
 
@@ -52,9 +52,8 @@ whereBlock =
                 }
             }
         )
-        (ParserFast.symbolFollowedBy "{"
-            (ParserWithComments.sepBy1
-                ","
+        (ParserFast.symbol1FollowedBy '{'
+            (ParserWithComments.sepBy1 ','
                 (Layout.maybeAroundBothSides effectWhereClause)
             )
         )

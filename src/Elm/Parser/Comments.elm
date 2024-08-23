@@ -8,7 +8,8 @@ import ParserFast exposing (Parser)
 
 singleLineCommentCore : ParserFast.Parser String
 singleLineCommentCore =
-    ParserFast.symbolFollowedBy "--"
+    ParserFast.symbol2FollowedBy '-'
+        '-'
         (ParserFast.whileMap
             (\c -> c /= '\u{000D}' && c /= '\n')
             (\content -> "--" ++ content)
@@ -17,10 +18,10 @@ singleLineCommentCore =
 
 multilineCommentString : ParserFast.Parser String
 multilineCommentString =
-    ParserFast.offsetSourceAndThen
-        (\offset source ->
-            case source |> String.slice offset (offset + 3) of
-                "{-|" ->
+    ParserFast.andThenWithRemaining
+        (\remaining ->
+            case remaining of
+                '{' :: '-' :: '|' :: _ ->
                     problemUnexpectedDocumentation
 
                 _ ->

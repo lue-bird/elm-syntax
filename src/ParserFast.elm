@@ -65,9 +65,11 @@ type PStep problem value
 
 
 type alias State =
-    { src : String
+    { inOnly :
+        { src : String
+        , indent : Int
+        }
     , offset : Int
-    , indent : Int
     , row : Int
     , col : Int
     }
@@ -94,7 +96,7 @@ to avoid breaking changes
 -}
 run : Parser a -> String -> Result (List Parser.DeadEnd) a
 run (Parser parse) src =
-    case parse { src = src, offset = 0, indent = 1, row = 1, col = 1 } of
+    case parse { inOnly = { src = src, indent = 1 }, offset = 0, row = 1, col = 1 } of
         Good _ value _ ->
             Ok value
 
@@ -285,7 +287,7 @@ columnIndentAndThen callback =
         (\s ->
             let
                 (Parser parse) =
-                    callback s.col s.indent
+                    callback s.col s.inOnly.indent
             in
             parse s
         )
@@ -302,7 +304,7 @@ validateEndColumnIndentation isOkay problemOnIsNotOkay (Parser parse) =
         (\s0 ->
             case parse s0 of
                 (Good committed _ s1) as good ->
-                    if isOkay s1.col s1.indent then
+                    if isOkay s1.col s1.inOnly.indent then
                         good
 
                     else
@@ -324,7 +326,7 @@ validateEndColumnIndentationBacktrackable isOkay problemOnIsNotOkay (Parser pars
         (\s0 ->
             case parse s0 of
                 Good _ res s1 ->
-                    if isOkay s1.col s1.indent then
+                    if isOkay s1.col s1.inOnly.indent then
                         Good False res s1
 
                     else
@@ -351,7 +353,7 @@ offsetSourceAndThen callback =
         (\s ->
             let
                 (Parser parse) =
-                    callback s.offset s.src
+                    callback s.offset s.inOnly.src
             in
             parse s
         )
@@ -1721,8 +1723,8 @@ numberHelp consumers =
     in
     Parser
         (\state ->
-            if String.any Char.isDigit (String.slice state.offset (state.offset + 1) state.src) then
-                case Parser.Advanced.run parserAdvancedNumberAndStringLength (String.slice state.offset (String.length state.src) state.src) of
+            if String.any Char.isDigit (String.slice state.offset (state.offset + 1) state.inOnly.src) then
+                case Parser.Advanced.run parserAdvancedNumberAndStringLength (String.slice state.offset (String.length state.inOnly.src) state.inOnly.src) of
                     Ok result ->
                         Good False result.number (stateAddLengthToOffsetAndColumn result.length state)
 
@@ -1736,9 +1738,8 @@ numberHelp consumers =
 
 stateAddLengthToOffsetAndColumn : Int -> State -> State
 stateAddLengthToOffsetAndColumn lengthAdded s =
-    { src = s.src
+    { inOnly = s.inOnly
     , offset = s.offset + lengthAdded
-    , indent = s.indent
     , row = s.row
     , col = s.col + lengthAdded
     }
@@ -1840,12 +1841,11 @@ symbol str res =
                 newOffset =
                     s.offset + strLength
             in
-            if String.slice s.offset newOffset s.src == str ++ "" then
+            if String.slice s.offset newOffset s.inOnly.src == str ++ "" then
                 Good True
                     res
-                    { src = s.src
+                    { inOnly = s.inOnly
                     , offset = newOffset
-                    , indent = s.indent
                     , row = s.row
                     , col = s.col + strLength
                     }
@@ -1875,12 +1875,11 @@ followedBySymbol str (Parser parsePrevious) =
                         newOffset =
                             s1.offset + strLength
                     in
-                    if String.slice s1.offset newOffset s1.src == str ++ "" then
+                    if String.slice s1.offset newOffset s1.inOnly.src == str ++ "" then
                         Good True
                             res
-                            { src = s1.src
+                            { inOnly = s1.inOnly
                             , offset = newOffset
-                            , indent = s1.indent
                             , row = s1.row
                             , col = s1.col + strLength
                             }
@@ -1914,12 +1913,11 @@ symbolBacktrackable str res =
                 newOffset =
                     s.offset + strLength
             in
-            if String.slice s.offset newOffset s.src == str ++ "" then
+            if String.slice s.offset newOffset s.inOnly.src == str ++ "" then
                 Good False
                     res
-                    { src = s.src
+                    { inOnly = s.inOnly
                     , offset = newOffset
-                    , indent = s.indent
                     , row = s.row
                     , col = s.col + strLength
                     }
@@ -1947,7 +1945,7 @@ symbolWithEndPosition str endPositionToRes =
                 newOffset =
                     s.offset + strLength
             in
-            if String.slice s.offset newOffset s.src == str ++ "" then
+            if String.slice s.offset newOffset s.inOnly.src == str ++ "" then
                 let
                     newCol : Int
                     newCol =
@@ -1955,9 +1953,8 @@ symbolWithEndPosition str endPositionToRes =
                 in
                 Good True
                     (endPositionToRes { row = s.row, column = newCol })
-                    { src = s.src
+                    { inOnly = s.inOnly
                     , offset = newOffset
-                    , indent = s.indent
                     , row = s.row
                     , col = newCol
                     }
@@ -1985,7 +1982,7 @@ symbolWithStartAndEndPosition str startAndEndPositionToRes =
                 newOffset =
                     s.offset + strLength
             in
-            if String.slice s.offset newOffset s.src == str ++ "" then
+            if String.slice s.offset newOffset s.inOnly.src == str ++ "" then
                 let
                     newCol : Int
                     newCol =
@@ -1993,9 +1990,8 @@ symbolWithStartAndEndPosition str startAndEndPositionToRes =
                 in
                 Good True
                     (startAndEndPositionToRes { row = s.row, column = s.col } { row = s.row, column = newCol })
-                    { src = s.src
+                    { inOnly = s.inOnly
                     , offset = newOffset
-                    , indent = s.indent
                     , row = s.row
                     , col = newCol
                     }
@@ -2026,11 +2022,10 @@ symbolFollowedBy str (Parser parseNext) =
                 newOffset =
                     s.offset + strLength
             in
-            if String.slice s.offset newOffset s.src == str ++ "" then
+            if String.slice s.offset newOffset s.inOnly.src == str ++ "" then
                 parseNext
-                    { src = s.src
+                    { inOnly = s.inOnly
                     , offset = newOffset
-                    , indent = s.indent
                     , row = s.row
                     , col = s.col + strLength
                     }
@@ -2095,14 +2090,13 @@ keyword kwd res =
                     s.offset + kwdLength
             in
             if
-                (String.slice s.offset newOffset s.src == kwd ++ "")
-                    && not (isSubCharAlphaNumOrUnderscore newOffset s.src)
+                (String.slice s.offset newOffset s.inOnly.src == kwd ++ "")
+                    && not (isSubCharAlphaNumOrUnderscore newOffset s.inOnly.src)
             then
                 Good True
                     res
-                    { src = s.src
+                    { inOnly = s.inOnly
                     , offset = newOffset
-                    , indent = s.indent
                     , row = s.row
                     , col = s.col + kwdLength
                     }
@@ -2140,13 +2134,12 @@ keywordFollowedBy kwd (Parser parseNext) =
                     s.offset + kwdLength
             in
             if
-                (String.slice s.offset newOffset s.src == kwd ++ "")
-                    && not (isSubCharAlphaNumOrUnderscore newOffset s.src)
+                (String.slice s.offset newOffset s.inOnly.src == kwd ++ "")
+                    && not (isSubCharAlphaNumOrUnderscore newOffset s.inOnly.src)
             then
                 parseNext
-                    { src = s.src
+                    { inOnly = s.inOnly
                     , offset = newOffset
-                    , indent = s.indent
                     , row = s.row
                     , col = s.col + kwdLength
                     }
@@ -2178,7 +2171,7 @@ end : Parser ()
 end =
     Parser
         (\s ->
-            if String.length s.src == s.offset + 0 then
+            if String.length s.inOnly.src == s.offset + 0 then
                 Good False () s
 
             else
@@ -2193,7 +2186,7 @@ anyChar =
             let
                 newOffset : Int
                 newOffset =
-                    charOrEnd s.offset s.src
+                    charOrEnd s.offset s.inOnly.src
             in
             if newOffset == -1 then
                 -- end of source
@@ -2203,25 +2196,23 @@ anyChar =
                 -- newline
                 Good True
                     '\n'
-                    { src = s.src
+                    { inOnly = s.inOnly
                     , offset = s.offset + 1
-                    , indent = s.indent
                     , row = s.row + 1
                     , col = 1
                     }
 
             else
                 -- found
-                case String.toList (String.slice s.offset newOffset s.src) of
+                case String.toList (String.slice s.offset newOffset s.inOnly.src) of
                     [] ->
                         Bad False (fromState s Parser.UnexpectedChar) ()
 
                     c :: _ ->
                         Good True
                             c
-                            { src = s.src
+                            { inOnly = s.inOnly
                             , offset = newOffset
-                            , indent = s.indent
                             , row = s.row
                             , col = s.col + 1
                             }
@@ -2262,68 +2253,66 @@ whileMap isGood chompedStringToRes =
             let
                 s1 : State
                 s1 =
-                    chompWhileHelp isGood s0.offset s0.row s0.col s0.src s0.indent
+                    chompWhileHelp isGood s0.offset s0.row s0.col s0.inOnly
             in
             Good (s1.offset > s0.offset)
-                (chompedStringToRes (String.slice s0.offset s1.offset s0.src))
+                (chompedStringToRes (String.slice s0.offset s1.offset s0.inOnly.src))
                 s1
         )
 
 
-chompWhileHelp : (Char -> Bool) -> Int -> Int -> Int -> String -> Int -> State
-chompWhileHelp isGood offset row col src indent =
+chompWhileHelp : (Char -> Bool) -> Int -> Int -> Int -> { src : String, indent : Int } -> State
+chompWhileHelp isGood offset row col inOnly =
     let
         actualChar : String
         actualChar =
-            String.slice offset (offset + 1) src
+            String.slice offset (offset + 1) inOnly.src
     in
     if String.any isGood actualChar then
         case actualChar of
             "\n" ->
-                chompWhileHelp isGood (offset + 1) (row + 1) 1 src indent
+                chompWhileHelp isGood (offset + 1) (row + 1) 1 inOnly
 
             _ ->
-                chompWhileHelp isGood (offset + 1) row (col + 1) src indent
+                chompWhileHelp isGood (offset + 1) row (col + 1) inOnly
 
     else if
         charStringIsUtf16HighSurrogate actualChar
             && -- String.any iterates over code points (so here just one Char)
-               String.any isGood (String.slice offset (offset + 2) src)
+               String.any isGood (String.slice offset (offset + 2) inOnly.src)
     then
-        chompWhileHelp isGood (offset + 2) row (col + 1) src indent
+        chompWhileHelp isGood (offset + 2) row (col + 1) inOnly
 
     else
         -- no match
-        { src = src
+        { inOnly = inOnly
         , offset = offset
-        , indent = indent
         , row = row
         , col = col
         }
 
 
-chompWhileWithoutLinebreakHelp : (Char -> Bool) -> Int -> Int -> Int -> String -> Int -> State
-chompWhileWithoutLinebreakHelp isGood offset row col src indent =
+chompWhileWithoutLinebreakHelp : (Char -> Bool) -> Int -> Int -> Int -> { src : String, indent : Int } -> State
+chompWhileWithoutLinebreakHelp isGood offset row col inOnly =
     let
         actualChar : String
         actualChar =
-            String.slice offset (offset + 1) src
+            String.slice offset (offset + 1) inOnly.src
     in
     if String.any isGood actualChar then
-        chompWhileWithoutLinebreakHelp isGood (offset + 1) row (col + 1) src indent
+        chompWhileWithoutLinebreakHelp isGood (offset + 1) row (col + 1) inOnly
 
     else if
         charStringIsUtf16HighSurrogate actualChar
             && -- String.any iterates over code points (so here just one Char)
-               String.any isGood (String.slice offset (offset + 2) src)
+               String.any isGood (String.slice offset (offset + 2) inOnly.src)
     then
-        chompWhileWithoutLinebreakHelp isGood (offset + 2) row (col + 1) src indent
+        chompWhileWithoutLinebreakHelp isGood (offset + 2) row (col + 1) inOnly
 
     else
         -- no match
-        { src = src
+        { inOnly = inOnly
         , offset = offset
-        , indent = indent
         , row = row
         , col = col
         }
@@ -2339,7 +2328,7 @@ chompWhileWhitespaceFollowedBy (Parser parseNext) =
             let
                 s1 : State
                 s1 =
-                    chompWhileWhitespaceHelp s0.offset s0.row s0.col s0.src s0.indent
+                    chompWhileWhitespaceHelp s0.offset s0.row s0.col s0.inOnly.src s0.inOnly.indent
             in
             if s1.offset > s0.offset then
                 parseNext s1
@@ -2364,7 +2353,11 @@ chompWhileWhitespaceHelp offset row col src indent =
 
         -- empty or non-whitespace
         _ ->
-            { src = src, offset = offset, indent = indent, row = row, col = col }
+            { inOnly = { src = src, indent = indent }
+            , offset = offset
+            , row = row
+            , col = col
+            }
 
 
 {-| Some languages are indentation sensitive. Python cares about tabs. Elm
@@ -2377,7 +2370,7 @@ withIndent newIndent (Parser parse) =
         (\s0 ->
             case parse (changeIndent newIndent s0) of
                 Good committed a s1 ->
-                    Good committed a (changeIndent s0.indent s1)
+                    Good committed a (changeIndent s0.inOnly.indent s1)
 
                 bad ->
                     bad
@@ -2386,9 +2379,8 @@ withIndent newIndent (Parser parse) =
 
 changeIndent : Int -> State -> State
 changeIndent newIndent s =
-    { src = s.src
+    { inOnly = { src = s.inOnly.src, indent = newIndent }
     , offset = s.offset
-    , indent = newIndent
     , row = s.row
     , col = s.col
     }
@@ -2402,7 +2394,7 @@ withIndentSetToColumn (Parser parse) =
         (\s0 ->
             case parse (changeIndent s0.col s0) of
                 Good committed a s1 ->
-                    Good committed a (changeIndent s0.indent s1)
+                    Good committed a (changeIndent s0.inOnly.indent s1)
 
                 bad ->
                     bad
@@ -2456,7 +2448,7 @@ ifFollowedByWhileExceptWithoutLinebreak firstIsOkay afterFirstIsOkay exceptionSe
             let
                 firstOffset : Int
                 firstOffset =
-                    isSubCharWithoutLinebreak firstIsOkay s.offset s.src
+                    isSubCharWithoutLinebreak firstIsOkay s.offset s.inOnly.src
             in
             if firstOffset == -1 then
                 Bad False (fromState s Parser.ExpectingVariable) ()
@@ -2465,11 +2457,11 @@ ifFollowedByWhileExceptWithoutLinebreak firstIsOkay afterFirstIsOkay exceptionSe
                 let
                     s1 : State
                     s1 =
-                        chompWhileWithoutLinebreakHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.src s.indent
+                        chompWhileWithoutLinebreakHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.inOnly
 
                     name : String
                     name =
-                        String.slice s.offset s1.offset s.src
+                        String.slice s.offset s1.offset s.inOnly.src
                 in
                 if Set.member name exceptionSet then
                     Bad False (fromState s Parser.ExpectingVariable) ()
@@ -2491,7 +2483,7 @@ ifFollowedByWhileExceptMapWithStartAndEndPositionsWithoutLinebreak toResult firs
             let
                 firstOffset : Int
                 firstOffset =
-                    isSubCharWithoutLinebreak firstIsOkay s0.offset s0.src
+                    isSubCharWithoutLinebreak firstIsOkay s0.offset s0.inOnly.src
             in
             if firstOffset == -1 then
                 Bad False (fromState s0 Parser.ExpectingVariable) ()
@@ -2500,11 +2492,11 @@ ifFollowedByWhileExceptMapWithStartAndEndPositionsWithoutLinebreak toResult firs
                 let
                     s1 : State
                     s1 =
-                        chompWhileWithoutLinebreakHelp afterFirstIsOkay firstOffset s0.row (s0.col + 1) s0.src s0.indent
+                        chompWhileWithoutLinebreakHelp afterFirstIsOkay firstOffset s0.row (s0.col + 1) s0.inOnly
 
                     name : String
                     name =
-                        String.slice s0.offset s1.offset s0.src
+                        String.slice s0.offset s1.offset s0.inOnly.src
                 in
                 if Set.member name exceptionSet then
                     Bad False (fromState s0 Parser.ExpectingVariable) ()
@@ -2524,7 +2516,7 @@ ifFollowedByWhileWithoutLinebreak firstIsOkay afterFirstIsOkay =
             let
                 firstOffset : Int
                 firstOffset =
-                    isSubCharWithoutLinebreak firstIsOkay s.offset s.src
+                    isSubCharWithoutLinebreak firstIsOkay s.offset s.inOnly.src
             in
             if firstOffset == -1 then
                 Bad False (fromState s Parser.UnexpectedChar) ()
@@ -2533,9 +2525,9 @@ ifFollowedByWhileWithoutLinebreak firstIsOkay afterFirstIsOkay =
                 let
                     s1 : State
                     s1 =
-                        chompWhileWithoutLinebreakHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.src s.indent
+                        chompWhileWithoutLinebreakHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.inOnly
                 in
-                Good True (String.slice s.offset s1.offset s.src) s1
+                Good True (String.slice s.offset s1.offset s.inOnly.src) s1
         )
 
 
@@ -2550,7 +2542,7 @@ ifFollowedByWhileMapWithStartAndEndPositionWithoutLinebreak rangeAndChompedToRes
             let
                 firstOffset : Int
                 firstOffset =
-                    isSubCharWithoutLinebreak firstIsOkay s0.offset s0.src
+                    isSubCharWithoutLinebreak firstIsOkay s0.offset s0.inOnly.src
             in
             if firstOffset == -1 then
                 Bad False (fromState s0 Parser.UnexpectedChar) ()
@@ -2559,12 +2551,12 @@ ifFollowedByWhileMapWithStartAndEndPositionWithoutLinebreak rangeAndChompedToRes
                 let
                     s1 : State
                     s1 =
-                        chompWhileWithoutLinebreakHelp afterFirstIsOkay firstOffset s0.row (s0.col + 1) s0.src s0.indent
+                        chompWhileWithoutLinebreakHelp afterFirstIsOkay firstOffset s0.row (s0.col + 1) s0.inOnly
                 in
                 Good True
                     (rangeAndChompedToRes
                         { row = s0.row, column = s0.col }
-                        (String.slice s0.offset s1.offset s0.src)
+                        (String.slice s0.offset s1.offset s0.inOnly.src)
                         { row = s1.row, column = s1.col }
                     )
                     s1
@@ -2672,10 +2664,10 @@ while isGood =
             let
                 s1 : State
                 s1 =
-                    chompWhileHelp isGood s0.offset s0.row s0.col s0.src s0.indent
+                    chompWhileHelp isGood s0.offset s0.row s0.col s0.inOnly
             in
             Good (s1.offset > s0.offset)
-                (String.slice s0.offset s1.offset s0.src)
+                (String.slice s0.offset s1.offset s0.inOnly.src)
                 s1
         )
 
@@ -2687,10 +2679,10 @@ whileWithoutLinebreak isGood =
             let
                 s1 : State
                 s1 =
-                    chompWhileWithoutLinebreakHelp isGood s0.offset s0.row s0.col s0.src s0.indent
+                    chompWhileWithoutLinebreakHelp isGood s0.offset s0.row s0.col s0.inOnly
             in
             Good (s1.offset > s0.offset)
-                (String.slice s0.offset s1.offset s0.src)
+                (String.slice s0.offset s1.offset s0.inOnly.src)
                 s1
         )
 
@@ -2705,7 +2697,7 @@ anyCharFollowedByWhileMap chompedStringToRes afterFirstIsOkay =
             let
                 firstOffset : Int
                 firstOffset =
-                    charOrEnd s.offset s.src
+                    charOrEnd s.offset s.inOnly.src
             in
             if firstOffset == -1 then
                 -- end of source
@@ -2716,12 +2708,12 @@ anyCharFollowedByWhileMap chompedStringToRes afterFirstIsOkay =
                     s1 : State
                     s1 =
                         if firstOffset == -2 then
-                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 s.src s.indent
+                            chompWhileHelp afterFirstIsOkay (s.offset + 1) (s.row + 1) 1 s.inOnly
 
                         else
-                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.src s.indent
+                            chompWhileHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.inOnly
                 in
-                Good True (chompedStringToRes (String.slice s.offset s1.offset s.src)) s1
+                Good True (chompedStringToRes (String.slice s.offset s1.offset s.inOnly.src)) s1
         )
 
 

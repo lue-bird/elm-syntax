@@ -89,7 +89,7 @@ endsPositivelyIndented : Parser a -> Parser a
 endsPositivelyIndented parser =
     ParserFast.validateEndColumnIndentation
         (\column indent -> column > indent)
-        "must be positively indented"
+        ParserFast.ExpectingPositivelyIndented
         parser
 
 
@@ -122,7 +122,7 @@ positivelyIndentedFollowedBy nextParser =
 
 problemPositivelyIndented : Parser a
 problemPositivelyIndented =
-    ParserFast.problem "must be positively indented"
+    ParserFast.problem ParserFast.ExpectingPositivelyIndented
 
 
 optimisticLayout : Parser Comments
@@ -181,14 +181,14 @@ moduleLevelIndentationFollowedBy nextParser =
 
 problemModuleLevelIndentation : Parser a
 problemModuleLevelIndentation =
-    ParserFast.problem "must be on module-level indentation"
+    ParserFast.problem ParserFast.ExpectingModuleLevelIndented
 
 
 endsTopIndented : Parser a -> Parser a
 endsTopIndented parser =
     ParserFast.validateEndColumnIndentation
         (\column indent -> column - indent == 0)
-        "must be on top indentation"
+        ParserFast.ExpectingOnTopIndented
         parser
 
 
@@ -206,7 +206,7 @@ onTopIndentationFollowedBy nextParser =
 
 problemTopIndentation : Parser a
 problemTopIndentation =
-    ParserFast.problem "must be on top indentation"
+    ParserFast.problem ParserFast.ExpectingOnTopIndented
 
 
 maybeAroundBothSides : Parser (WithComments b) -> Parser (WithComments b)

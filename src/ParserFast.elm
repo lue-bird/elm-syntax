@@ -1,5 +1,5 @@
 module ParserFast exposing
-    ( Parser, run
+    ( Parser, run, Problem(..), State
     , symbol, symbolWithEndLocation, symbolWithRange, symbolFollowedBy, symbolBacktrackableFollowedBy, followedBySymbol
     , keyword, keywordFollowedBy
     , anyChar, while, whileWithoutLinebreak, whileMap, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
@@ -17,7 +17,7 @@ module ParserFast exposing
 
 {-|
 
-@docs Parser, run
+@docs Parser, run, Problem, State
 
 
 ### a note about backtracking and committing
@@ -132,14 +132,90 @@ import Parser exposing (Problem(..))
 
 
 type Problem
-    = ExpectingNumber Int Int ()
-    | ExpectingSymbol Int Int String
-    | ExpectingAnyChar Int Int ()
-    | ExpectingKeyword Int Int String
-    | ExpectingCharSatisfyingPredicate Int Int ()
-    | ExpectingStringSatisfyingPredicate Int Int ()
-    | ExpectingCustom Int Int String
-    | ExpectingNonEmptyOneOf Int Int ()
+    = ExpectingNonEmptyOneOf State
+    | ExpectingSymbolExposing State
+    | ExpectingSymbolDot State
+    | ExpectingSymbolDotDot State
+    | ExpectingSymbolBackSlash State
+    | ExpectingSymbolCurlyOpen State
+    | ExpectingSymbolCurlyClose State
+    | ExpectingSymbolParensOpen State
+    | ExpectingSymbolParensClose State
+    | ExpectingSymbolSquareOpen State
+    | ExpectingSymbolSquareClose State
+    | ExpectingSymbolSingleQuote State
+    | ExpectingSymbolDoubleQuote State
+    | ExpectingSymbolDoubleQuoteDoubleQuote State
+    | ExpectingSymbolDoubleQuoteDoubleQuoteDoubleQuote State
+    | ExpectingSymbolColon State
+    | ExpectingSymbolComma State
+    | ExpectingSymbolEquals State
+    | ExpectingSymbolMinus State
+    | ExpectingSymbolMinusMinus State
+    | ExpectingSymbolCurlyOpenMinus State
+    | ExpectingSymbolMinusCurlyClose State
+    | ExpectingSymbolPlus State
+    | ExpectingSymbolLessThan State
+    | ExpectingSymbolGreaterThan State
+    | ExpectingSymbolEqualsEquals State
+    | ExpectingSymbolSlashEquals State
+    | ExpectingSymbolPlusPlus State
+    | ExpectingSymbolVerticalBarGreaterThan State
+    | ExpectingSymbolLessThanVerticalBar State
+    | ExpectingSymbolGreaterThanGreaterThan State
+    | ExpectingSymbolLessThanLessThan State
+    | ExpectingSymbolStar State
+    | ExpectingSymbolVerticalBarDot State
+    | ExpectingSymbolAmpersandAmpersand State
+    | ExpectingSymbolVerticalBarEquals State
+    | ExpectingSymbolSlashSlash State
+    | ExpectingSymbolSlash State
+    | ExpectingSymbolLessThanSlashGreaterThan State
+    | ExpectingSymbolVerticalBarVerticalBar State
+    | ExpectingSymbolLessThanQuestionMarkGreaterThan State
+    | ExpectingSymbolLessThanEquals State
+    | ExpectingSymbolGreaterThanEquals State
+    | ExpectingSymbolCaret State
+    | ExpectingSymbolVerticalBar State
+    | ExpectingSymbolMinusGreaterThan State
+    | ExpectingSymbolGlslVerticalBar State
+    | ExpectingSymbolVerticalBarSquareClose State
+    | ExpectingSymbolLowercaseR State
+    | ExpectingSymbolLowercaseT State
+    | ExpectingSymbolLowercaseN State
+    | ExpectingSymbolLowercaseUCurlyOpen State
+    | ExpectingSymbolColonColon State
+    | ExpectingSymbolUnderscore State
+    | ExpectingSymbolParensOpenParensClose State
+    | ExpectingKeywordIf State
+    | ExpectingKeywordThen State
+    | ExpectingKeywordElse State
+    | ExpectingKeywordCase State
+    | ExpectingKeywordOf State
+    | ExpectingKeywordLet State
+    | ExpectingKeywordIn State
+    | ExpectingKeywordType State
+    | ExpectingKeywordAlias State
+    | ExpectingKeywordImport State
+    | ExpectingKeywordAs State
+    | ExpectingKeywordModule State
+    | ExpectingKeywordWhere State
+    | ExpectingKeywordEffect State
+    | ExpectingKeywordPort State
+    | ExpectingKeywordInfix State
+    | ExpectingKeywordRight State
+    | ExpectingKeywordLeft State
+    | ExpectingKeywordNon State
+    | ExpectingNumber State
+    | ExpectingAnyChar State
+    | ExpectingCharSatisfyingPredicate State
+    | ExpectingStringSatisfyingPredicate State
+    | ExpectingMultilineCommentNotDocumentation State
+    | ExpectingNegationWithCorrectWhitespace State
+    | ExpectingPositivelyIndented State
+    | ExpectingOnTopIndented State
+    | ExpectingModuleLevelIndented State
+    | ExpectingSameNameForSignatureAndImplementation State
     | ExpectingOneOf Problem Problem (List Problem)
 
 
@@ -178,13 +254,13 @@ type alias State =
 {-| Try a parser. Here are some examples using the [`keyword`](#keyword)
 parser:
 
-    run (keyword "true" ()) "true" --> Ok ()
+    run (keyword ... "true" ()) "true" --> Ok ()
 
-    run (keyword "true" ()) "True" --> Err ...
+    run (keyword ... "true" ()) "True" --> Err ...
 
-    run (keyword "true" ()) "false" --> Err ...
+    run (keyword ... "true" ()) "false" --> Err ...
 
-    run (keyword "true" ()) "true!" --> Err ...
+    run (keyword ... "true" ()) "true!" --> Err ...
 
 Notice the last case!
 It's guaranteed you have reached the end of the string you are parsing.
@@ -216,29 +292,257 @@ ropeFilledToList problemToConvert soFar =
                 |> ropeFilledToList secondTry
                 |> ropeFilledToList firstTry
 
-        ExpectingNumber row col () ->
-            { row = row, col = col, problem = Parser.ExpectingNumber } :: soFar
+        ExpectingNonEmptyOneOf s ->
+            { row = s.row, col = s.col, problem = Parser.Problem "empty oneOf" } :: soFar
 
-        ExpectingSymbol row col symbolString ->
-            { row = row, col = col, problem = Parser.ExpectingSymbol symbolString } :: soFar
+        ExpectingNumber s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingNumber } :: soFar
 
-        ExpectingAnyChar row col () ->
-            { row = row, col = col, problem = Parser.Problem "expecting any char" } :: soFar
+        ExpectingSymbolExposing s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "exposing" } :: soFar
 
-        ExpectingKeyword row col keywordString ->
-            { row = row, col = col, problem = Parser.ExpectingKeyword keywordString } :: soFar
+        ExpectingSymbolDot s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "." } :: soFar
 
-        ExpectingCharSatisfyingPredicate row col () ->
-            { row = row, col = col, problem = Parser.UnexpectedChar } :: soFar
+        ExpectingSymbolDotDot s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol ".." } :: soFar
 
-        ExpectingStringSatisfyingPredicate row col () ->
-            { row = row, col = col, problem = Parser.Problem "expected string to pass validation" } :: soFar
+        ExpectingSymbolBackSlash s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "\\" } :: soFar
 
-        ExpectingCustom row col customMessage ->
-            { row = row, col = col, problem = Parser.Problem customMessage } :: soFar
+        ExpectingSymbolCurlyOpen s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "{" } :: soFar
 
-        ExpectingNonEmptyOneOf row col () ->
-            { row = row, col = col, problem = Parser.Problem "expecting oneOf list to have at least one member" } :: soFar
+        ExpectingSymbolCurlyClose s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "}" } :: soFar
+
+        ExpectingSymbolParensOpen s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "(" } :: soFar
+
+        ExpectingSymbolParensClose s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol ")" } :: soFar
+
+        ExpectingSymbolSquareOpen s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "[" } :: soFar
+
+        ExpectingSymbolSquareClose s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "]" } :: soFar
+
+        ExpectingSymbolSingleQuote s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "'" } :: soFar
+
+        ExpectingSymbolDoubleQuote s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "\"" } :: soFar
+
+        ExpectingSymbolDoubleQuoteDoubleQuote s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "\"\"" } :: soFar
+
+        ExpectingSymbolDoubleQuoteDoubleQuoteDoubleQuote s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "\"\"\"" } :: soFar
+
+        ExpectingSymbolColon s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol ":" } :: soFar
+
+        ExpectingSymbolComma s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "," } :: soFar
+
+        ExpectingSymbolEquals s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "=" } :: soFar
+
+        ExpectingSymbolMinus s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "-" } :: soFar
+
+        ExpectingSymbolMinusMinus s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "--" } :: soFar
+
+        ExpectingSymbolCurlyOpenMinus s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "{-" } :: soFar
+
+        ExpectingSymbolMinusCurlyClose s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "-}" } :: soFar
+
+        ExpectingSymbolPlus s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "+" } :: soFar
+
+        ExpectingSymbolLessThan s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "<" } :: soFar
+
+        ExpectingSymbolGreaterThan s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol ">" } :: soFar
+
+        ExpectingSymbolEqualsEquals s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "==" } :: soFar
+
+        ExpectingSymbolSlashEquals s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "/=" } :: soFar
+
+        ExpectingSymbolPlusPlus s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "++" } :: soFar
+
+        ExpectingSymbolVerticalBarGreaterThan s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "|>" } :: soFar
+
+        ExpectingSymbolLessThanVerticalBar s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "<|" } :: soFar
+
+        ExpectingSymbolGreaterThanGreaterThan s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol ">>" } :: soFar
+
+        ExpectingSymbolLessThanLessThan s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "<<" } :: soFar
+
+        ExpectingSymbolStar s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "*" } :: soFar
+
+        ExpectingSymbolVerticalBarDot s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "|." } :: soFar
+
+        ExpectingSymbolAmpersandAmpersand s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "&&" } :: soFar
+
+        ExpectingSymbolVerticalBarEquals s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "|=" } :: soFar
+
+        ExpectingSymbolSlashSlash s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "//" } :: soFar
+
+        ExpectingSymbolSlash s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "/" } :: soFar
+
+        ExpectingSymbolLessThanSlashGreaterThan s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "</>" } :: soFar
+
+        ExpectingSymbolVerticalBarVerticalBar s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "||" } :: soFar
+
+        ExpectingSymbolLessThanQuestionMarkGreaterThan s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "<?>" } :: soFar
+
+        ExpectingSymbolLessThanEquals s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "<=" } :: soFar
+
+        ExpectingSymbolGreaterThanEquals s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol ">=" } :: soFar
+
+        ExpectingSymbolCaret s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "^" } :: soFar
+
+        ExpectingSymbolVerticalBar s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "|" } :: soFar
+
+        ExpectingSymbolMinusGreaterThan s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "->" } :: soFar
+
+        ExpectingSymbolGlslVerticalBar s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "glsl|" } :: soFar
+
+        ExpectingSymbolVerticalBarSquareClose s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "|]" } :: soFar
+
+        ExpectingSymbolLowercaseR s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "r" } :: soFar
+
+        ExpectingSymbolLowercaseT s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "t" } :: soFar
+
+        ExpectingSymbolLowercaseN s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "n" } :: soFar
+
+        ExpectingSymbolLowercaseUCurlyOpen s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "u{" } :: soFar
+
+        ExpectingSymbolColonColon s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "::" } :: soFar
+
+        ExpectingSymbolUnderscore s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "_" } :: soFar
+
+        ExpectingSymbolParensOpenParensClose s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingSymbol "()" } :: soFar
+
+        ExpectingAnyChar s ->
+            { row = s.row, col = s.col, problem = Parser.Problem "expected any char" } :: soFar
+
+        ExpectingKeywordIf s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "if" } :: soFar
+
+        ExpectingKeywordThen s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "then" } :: soFar
+
+        ExpectingKeywordElse s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "else" } :: soFar
+
+        ExpectingKeywordCase s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "case" } :: soFar
+
+        ExpectingKeywordOf s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "of" } :: soFar
+
+        ExpectingKeywordLet s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "let" } :: soFar
+
+        ExpectingKeywordIn s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "in" } :: soFar
+
+        ExpectingKeywordType s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "type" } :: soFar
+
+        ExpectingKeywordAlias s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "alias" } :: soFar
+
+        ExpectingKeywordImport s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "import" } :: soFar
+
+        ExpectingKeywordAs s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "as" } :: soFar
+
+        ExpectingKeywordModule s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "module" } :: soFar
+
+        ExpectingKeywordWhere s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "where" } :: soFar
+
+        ExpectingKeywordEffect s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "effect" } :: soFar
+
+        ExpectingKeywordPort s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "port" } :: soFar
+
+        ExpectingKeywordInfix s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "infix" } :: soFar
+
+        ExpectingKeywordRight s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "right" } :: soFar
+
+        ExpectingKeywordLeft s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "left" } :: soFar
+
+        ExpectingKeywordNon s ->
+            { row = s.row, col = s.col, problem = Parser.ExpectingKeyword "non" } :: soFar
+
+        ExpectingCharSatisfyingPredicate s ->
+            { row = s.row, col = s.col, problem = Parser.UnexpectedChar } :: soFar
+
+        ExpectingStringSatisfyingPredicate s ->
+            { row = s.row, col = s.col, problem = Parser.Problem "expected string to pass validation" } :: soFar
+
+        ExpectingMultilineCommentNotDocumentation s ->
+            { row = s.row, col = s.col, problem = Parser.Problem "expected multi-line comment, not documentation" } :: soFar
+
+        ExpectingNegationWithCorrectWhitespace s ->
+            { row = s.row, col = s.col, problem = Parser.Problem "expected whitespace before negation, since a negation sign not preceded by whitespace is considered subtraction" } :: soFar
+
+        ExpectingPositivelyIndented s ->
+            { row = s.row, col = s.col, problem = Parser.Problem "expected it to be positively indented" } :: soFar
+
+        ExpectingOnTopIndented s ->
+            { row = s.row, col = s.col, problem = Parser.Problem "expected it to be on top indented" } :: soFar
+
+        ExpectingModuleLevelIndented s ->
+            { row = s.row, col = s.col, problem = Parser.Problem "expected it to be module-level indented" } :: soFar
+
+        ExpectingSameNameForSignatureAndImplementation s ->
+            { row = s.row, col = s.col, problem = Parser.Problem "expected to find the same name for signature and implementation" } :: soFar
 
 
 {-| Helper to delay computation,
@@ -301,7 +605,7 @@ lazy thunk =
         )
 
 
-validate : (a -> Bool) -> String -> Parser a -> Parser a
+validate : (a -> Bool) -> (State -> Problem) -> Parser a -> Parser a
 validate isOkay problemOnNotOkay (Parser parseA) =
     Parser
         (\s0 ->
@@ -314,7 +618,7 @@ validate isOkay problemOnNotOkay (Parser parseA) =
                         good
 
                     else
-                        Bad True (ExpectingCustom s1.row s1.col problemOnNotOkay)
+                        Bad True (s1 |> problemOnNotOkay)
         )
 
 
@@ -353,7 +657,7 @@ columnIndentAndThen callback =
         )
 
 
-validateEndColumnIndentation : (Int -> Int -> Bool) -> String -> Parser a -> Parser a
+validateEndColumnIndentation : (Int -> Int -> Bool) -> (State -> Problem) -> Parser a -> Parser a
 validateEndColumnIndentation isOkay problemOnIsNotOkay (Parser parse) =
     Parser
         (\s0 ->
@@ -363,7 +667,7 @@ validateEndColumnIndentation isOkay problemOnIsNotOkay (Parser parse) =
                         good
 
                     else
-                        Bad True (ExpectingCustom s1.row s1.col problemOnIsNotOkay)
+                        Bad True (s1 |> problemOnIsNotOkay)
 
                 bad ->
                     bad
@@ -946,9 +1250,9 @@ map9WithRange func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parse
 {-| Indicate that a parser has reached a dead end. "Everything was going fine
 until I ran into this problem." Check out the -AndThen helpers for where to use this.
 -}
-problem : String -> Parser a
-problem msg =
-    Parser (\s -> Bad False (ExpectingCustom s.row s.col msg))
+problem : (State -> Problem) -> Parser a
+problem expecting =
+    Parser (\s -> Bad False (s |> expecting))
 
 
 orSucceed : Parser a -> a -> Parser a
@@ -1675,7 +1979,7 @@ oneOf : List (Parser a) -> Parser a
 oneOf possibilities =
     case possibilities of
         [] ->
-            Parser (\s -> Bad False (ExpectingNonEmptyOneOf s.row s.col ()))
+            Parser (\s -> Bad False (s |> ExpectingNonEmptyOneOf))
 
         [ onlyPossibility ] ->
             onlyPossibility
@@ -1709,7 +2013,8 @@ oneOfHelp : State -> Problem -> Problem -> List Problem -> List (Parser a) -> PS
 oneOfHelp s0 firstX secondX remainingProblemsSoFar parsers =
     case parsers of
         [] ->
-            Bad False (ExpectingOneOf firstX secondX remainingProblemsSoFar)
+            Bad False
+                (ExpectingOneOf firstX secondX remainingProblemsSoFar)
 
         (Parser parse) :: remainingParsers ->
             case parse s0 of
@@ -1839,7 +2144,7 @@ integerDecimalMapWithRange rangeAndIntToRes =
                     convertIntegerDecimal s0.offset s0.src
             in
             if s1.offset == -1 then
-                Bad False (ExpectingNumber s0.row s0.col ())
+                Bad False (s0 |> ExpectingNumber)
 
             else
                 let
@@ -1892,7 +2197,7 @@ integerDecimalOrHexadecimalMapWithRange rangeAndIntDecimalToRes rangeAndIntHexad
                     convertIntegerDecimalOrHexadecimal s0.offset s0.src
             in
             if s1.offsetAndInt.offset == -1 then
-                Bad False (ExpectingNumber s0.row s0.col ())
+                Bad False (s0 |> ExpectingNumber)
 
             else
                 let
@@ -1952,7 +2257,7 @@ floatOrIntegerDecimalOrHexadecimalMapWithRange rangeAndFloatToRes rangeAndIntDec
                     convertIntegerDecimalOrHexadecimal s0.offset s0.src
             in
             if s1.offsetAndInt.offset == -1 then
-                Bad False (ExpectingNumber s0.row s0.col ())
+                Bad False (s0 |> ExpectingNumber)
 
             else
                 let
@@ -2010,7 +2315,7 @@ floatOrIntegerDecimalOrHexadecimalMapWithRange rangeAndFloatToRes rangeAndIntDec
                                 }
 
                         Nothing ->
-                            Bad False (ExpectingNumber s0.row s0.col ())
+                            Bad False (s0 |> ExpectingNumber)
         )
 
 
@@ -2412,8 +2717,8 @@ but it might need extra validations for binary operators like `-` because you ca
 yourself in weird situations. For example, is `3--4` a typo? Or is it `3 - -4`?
 
 -}
-symbol : String -> res -> Parser res
-symbol str res =
+symbol : (State -> Problem) -> String -> res -> Parser res
+symbol problemOnNotMatching str res =
     let
         strLength : Int
         strLength =
@@ -2436,12 +2741,12 @@ symbol str res =
                     }
 
             else
-                Bad False (ExpectingSymbol s.row s.col str)
+                Bad False (s |> problemOnNotMatching)
         )
 
 
-followedBySymbol : String -> Parser a -> Parser a
-followedBySymbol str (Parser parsePrevious) =
+followedBySymbol : (State -> Problem) -> String -> Parser a -> Parser a
+followedBySymbol problemOnNotMatching str (Parser parsePrevious) =
     let
         strLength : Int
         strLength =
@@ -2466,15 +2771,15 @@ followedBySymbol str (Parser parsePrevious) =
                             }
 
                     else
-                        Bad True (ExpectingSymbol s1.row s1.col str)
+                        Bad True (s1 |> problemOnNotMatching)
 
                 bad ->
                     bad
         )
 
 
-symbolWithEndLocation : String -> (Location -> res) -> Parser res
-symbolWithEndLocation str endLocationToRes =
+symbolWithEndLocation : (State -> Problem) -> String -> (Location -> res) -> Parser res
+symbolWithEndLocation problemOnNotMatching str endLocationToRes =
     let
         strLength : Int
         strLength =
@@ -2503,12 +2808,12 @@ symbolWithEndLocation str endLocationToRes =
                     }
 
             else
-                Bad False (ExpectingSymbol s.row s.col str)
+                Bad False (s |> problemOnNotMatching)
         )
 
 
-symbolWithRange : String -> (Range -> res) -> Parser res
-symbolWithRange str startAndEndLocationToRes =
+symbolWithRange : (State -> Problem) -> String -> (Range -> res) -> Parser res
+symbolWithRange problemOnNotMatching str startAndEndLocationToRes =
     let
         strLength : Int
         strLength =
@@ -2537,15 +2842,15 @@ symbolWithRange str startAndEndLocationToRes =
                     }
 
             else
-                Bad False (ExpectingSymbol s.row s.col str)
+                Bad False (s |> problemOnNotMatching)
         )
 
 
 {-| Make sure the given String isn't empty and does not contain \\n
 or 2-part UTF-16 characters.
 -}
-symbolFollowedBy : String -> Parser next -> Parser next
-symbolFollowedBy str (Parser parseNext) =
+symbolFollowedBy : (State -> Problem) -> String -> Parser next -> Parser next
+symbolFollowedBy problemOnNotMatching str (Parser parseNext) =
     let
         strLength : Int
         strLength =
@@ -2569,15 +2874,15 @@ symbolFollowedBy str (Parser parseNext) =
                     |> pStepCommit
 
             else
-                Bad False (ExpectingSymbol s.row s.col str)
+                Bad False (s |> problemOnNotMatching)
         )
 
 
 {-| Make sure the given String isn't empty and does not contain \\n
 or 2-part UTF-16 characters.
 -}
-symbolBacktrackableFollowedBy : String -> Parser next -> Parser next
-symbolBacktrackableFollowedBy str (Parser parseNext) =
+symbolBacktrackableFollowedBy : (State -> Problem) -> String -> Parser next -> Parser next
+symbolBacktrackableFollowedBy problemOnNotMatching str (Parser parseNext) =
     let
         strLength : Int
         strLength =
@@ -2600,7 +2905,7 @@ symbolBacktrackableFollowedBy str (Parser parseNext) =
                     }
 
             else
-                Bad False (ExpectingSymbol s.row s.col str)
+                Bad False (s |> problemOnNotMatching)
         )
 
 
@@ -2628,8 +2933,8 @@ This will help with the weird cases like
 `case(x, y)` being totally fine but `casex` not being fine.
 
 -}
-keyword : String -> res -> Parser res
-keyword kwd res =
+keyword : (State -> Problem) -> String -> res -> Parser res
+keyword expecting kwd res =
     let
         kwdLength : Int
         kwdLength =
@@ -2655,7 +2960,7 @@ keyword kwd res =
                     }
 
             else
-                Bad False (ExpectingKeyword s.row s.col kwd)
+                Bad False (s |> expecting)
         )
 
 
@@ -2668,8 +2973,8 @@ isSubCharAlphaNumOrUnderscore offset string =
 {-| Make sure the given String isn't empty and does not contain \\n
 or 2-part UTF-16 characters.
 -}
-keywordFollowedBy : String -> Parser next -> Parser next
-keywordFollowedBy kwd (Parser parseNext) =
+keywordFollowedBy : (State -> Problem) -> String -> Parser next -> Parser next
+keywordFollowedBy expecting kwd (Parser parseNext) =
     let
         kwdLength : Int
         kwdLength =
@@ -2696,7 +3001,7 @@ keywordFollowedBy kwd (Parser parseNext) =
                     |> pStepCommit
 
             else
-                Bad False (ExpectingKeyword s.row s.col kwd)
+                Bad False (s |> expecting)
         )
 
 
@@ -2711,7 +3016,7 @@ anyChar =
             in
             if newOffset == -1 then
                 -- end of source
-                Bad False (ExpectingAnyChar s.row s.col ())
+                Bad False (s |> ExpectingAnyChar)
 
             else if newOffset == -2 then
                 -- newline
@@ -2727,7 +3032,7 @@ anyChar =
                 -- found
                 case String.toList (String.slice s.offset newOffset s.src) of
                     [] ->
-                        Bad False (ExpectingAnyChar s.row s.col ())
+                        Bad False (s |> ExpectingAnyChar)
 
                     c :: _ ->
                         Good c
@@ -3002,30 +3307,30 @@ ifFollowedByWhileValidateWithoutLinebreak :
     -> Parser String
 ifFollowedByWhileValidateWithoutLinebreak firstIsOkay afterFirstIsOkay resultIsOkay =
     Parser
-        (\s ->
+        (\s0 ->
             let
                 firstOffset : Int
                 firstOffset =
-                    isSubCharWithoutLinebreak firstIsOkay s.offset s.src
+                    isSubCharWithoutLinebreak firstIsOkay s0.offset s0.src
             in
             if firstOffset == -1 then
-                Bad False (ExpectingCharSatisfyingPredicate s.row s.col ())
+                Bad False (s0 |> ExpectingCharSatisfyingPredicate)
 
             else
                 let
                     s1 : State
                     s1 =
-                        skipWhileWithoutLinebreakHelp afterFirstIsOkay firstOffset s.row (s.col + 1) s.src s.indent
+                        skipWhileWithoutLinebreakHelp afterFirstIsOkay firstOffset s0.row (s0.col + 1) s0.src s0.indent
 
                     name : String
                     name =
-                        String.slice s.offset s1.offset s.src
+                        String.slice s0.offset s1.offset s0.src
                 in
                 if resultIsOkay name then
                     Good name s1
 
                 else
-                    Bad False (ExpectingStringSatisfyingPredicate s.row (s.col + 1) ())
+                    Bad False (s0 |> ExpectingStringSatisfyingPredicate)
         )
 
 
@@ -3076,7 +3381,7 @@ whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySym
                     }
 
             else
-                Bad False (ExpectingStringSatisfyingPredicate s0.row (s0.col + 1) ())
+                Bad False (s0 |> ExpectingStringSatisfyingPredicate)
         )
 
 
@@ -3095,7 +3400,7 @@ ifFollowedByWhileValidateMapWithRangeWithoutLinebreak toResult firstIsOkay after
                     isSubCharWithoutLinebreak firstIsOkay s0.offset s0.src
             in
             if firstOffset == -1 then
-                Bad False (ExpectingCharSatisfyingPredicate s0.row s0.col ())
+                Bad False (s0 |> ExpectingCharSatisfyingPredicate)
 
             else
                 let
@@ -3111,7 +3416,7 @@ ifFollowedByWhileValidateMapWithRangeWithoutLinebreak toResult firstIsOkay after
                     Good (toResult { start = { row = s0.row, column = s0.col }, end = { row = s1.row, column = s1.col } } name) s1
 
                 else
-                    Bad False (ExpectingStringSatisfyingPredicate s0.row (s0.col + 1) ())
+                    Bad False (s0 |> ExpectingStringSatisfyingPredicate)
         )
 
 
@@ -3128,7 +3433,7 @@ ifFollowedByWhileWithoutLinebreak firstIsOkay afterFirstIsOkay =
                     isSubCharWithoutLinebreak firstIsOkay s.offset s.src
             in
             if firstOffset == -1 then
-                Bad False (ExpectingCharSatisfyingPredicate s.row s.col ())
+                Bad False (s |> ExpectingCharSatisfyingPredicate)
 
             else
                 let
@@ -3154,7 +3459,7 @@ ifFollowedByWhileMapWithRangeWithoutLinebreak rangeAndConsumedStringToRes firstI
                     isSubCharWithoutLinebreak firstIsOkay s0.offset s0.src
             in
             if firstOffset == -1 then
-                Bad False (ExpectingCharSatisfyingPredicate s0.row s0.col ())
+                Bad False (s0 |> ExpectingCharSatisfyingPredicate)
 
             else
                 let
@@ -3187,7 +3492,7 @@ ifFollowedByWhileMapWithoutLinebreak consumedStringToRes firstIsOkay afterFirstI
                     isSubCharWithoutLinebreak firstIsOkay s0.offset s0.src
             in
             if firstOffset == -1 then
-                Bad False (ExpectingCharSatisfyingPredicate s0.row s0.col ())
+                Bad False (s0 |> ExpectingCharSatisfyingPredicate)
 
             else
                 let
@@ -3203,8 +3508,8 @@ ifFollowedByWhileMapWithoutLinebreak consumedStringToRes firstIsOkay afterFirstI
 
 {-| Parse multi-line comments that can itself contain other arbitrary multi-comments inside.
 -}
-nestableMultiCommentMapWithRange : (Range -> String -> res) -> ( Char, String ) -> ( Char, String ) -> Parser res
-nestableMultiCommentMapWithRange rangeContentToRes ( openChar, openTail ) ( closeChar, closeTail ) =
+nestableMultiCommentMapWithRange : (Range -> String -> res) -> (State -> Problem) -> ( Char, String ) -> (State -> Problem) -> ( Char, String ) -> Parser res
+nestableMultiCommentMapWithRange rangeContentToRes problemOnNotMatchingOpen ( openChar, openTail ) problemOnNotMatchingClose ( closeChar, closeTail ) =
     let
         open : String
         open =
@@ -3224,16 +3529,17 @@ nestableMultiCommentMapWithRange rangeContentToRes ( openChar, openTail ) ( clos
                 range
                 (open ++ afterOpen ++ contentAfterAfterOpen ++ close)
         )
-        (symbolFollowedBy open
+        (symbolFollowedBy problemOnNotMatchingOpen
+            open
             (while isNotRelevant)
         )
         (oneOf2
-            (symbol close "")
+            (symbol problemOnNotMatchingClose close "")
             (loop
                 ( "", 1 )
                 (oneOf3
-                    (symbol close ( close, -1 ))
-                    (symbol open ( open, 1 ))
+                    (symbol problemOnNotMatchingClose close ( close, -1 ))
+                    (symbol problemOnNotMatchingOpen open ( open, 1 ))
                     (anyCharFollowedByWhileMap (\consumed -> ( consumed, 0 ))
                         isNotRelevant
                     )
@@ -3298,7 +3604,7 @@ anyCharFollowedByWhileMap consumedStringToRes afterFirstIsOkay =
             in
             if firstOffset == -1 then
                 -- end of source
-                Bad False (ExpectingAnyChar s.row s.col ())
+                Bad False (s |> ExpectingAnyChar)
 
             else
                 let

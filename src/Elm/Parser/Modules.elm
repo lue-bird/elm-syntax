@@ -29,14 +29,17 @@ effectWhereClause =
             }
         )
         Tokens.functionName
-        (Layout.maybeLayout |> ParserFast.followedBySymbol "=")
+        (Layout.maybeLayout
+            |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolEquals "="
+        )
         Layout.maybeLayout
         Tokens.typeNameNode
 
 
 whereBlock : Parser (WithComments { command : Maybe (Node String), subscription : Maybe (Node String) })
 whereBlock =
-    ParserFast.symbolFollowedBy "{"
+    ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolCurlyOpen
+        "{"
         (ParserFast.map4
             (\commentsBeforeHead head commentsAfterHead tail ->
                 let
@@ -65,10 +68,13 @@ whereBlock =
             effectWhereClause
             Layout.maybeLayout
             (ParserWithComments.many
-                (ParserFast.symbolFollowedBy "," (Layout.maybeAroundBothSides effectWhereClause))
+                (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolComma
+                    ","
+                    (Layout.maybeAroundBothSides effectWhereClause)
+                )
             )
         )
-        |> ParserFast.followedBySymbol "}"
+        |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolCurlyClose "}"
 
 
 effectWhereClauses : Parser (WithComments { command : Maybe (Node String), subscription : Maybe (Node String) })
@@ -79,7 +85,10 @@ effectWhereClauses =
             , syntax = whereResult.syntax
             }
         )
-        (ParserFast.keywordFollowedBy "where" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordWhere
+            "where"
+            Layout.maybeLayout
+        )
         whereBlock
 
 
@@ -105,8 +114,14 @@ effectModuleDefinition =
                     )
             }
         )
-        (ParserFast.keywordFollowedBy "effect" Layout.maybeLayout)
-        (ParserFast.keywordFollowedBy "module" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordEffect
+            "effect"
+            Layout.maybeLayout
+        )
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordModule
+            "module"
+            Layout.maybeLayout
+        )
         moduleName
         Layout.maybeLayout
         effectWhereClauses
@@ -131,7 +146,10 @@ normalModuleDefinition =
                     )
             }
         )
-        (ParserFast.keywordFollowedBy "module" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordModule
+            "module"
+            Layout.maybeLayout
+        )
         moduleName
         Layout.maybeLayout
         exposeDefinition
@@ -151,8 +169,14 @@ portModuleDefinition =
                     (PortModule { moduleName = moduleName, exposingList = exposingList.syntax })
             }
         )
-        (ParserFast.keywordFollowedBy "port" Layout.maybeLayout)
-        (ParserFast.keywordFollowedBy "module" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordPort
+            "port"
+            Layout.maybeLayout
+        )
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordModule
+            "module"
+            Layout.maybeLayout
+        )
         moduleName
         Layout.maybeLayout
         exposeDefinition

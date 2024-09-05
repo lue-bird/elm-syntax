@@ -55,7 +55,7 @@ maybeComposedWith =
                 , syntax = PatternComposedWithAs name
                 }
             )
-            (ParserFast.keywordFollowedBy "as" Layout.maybeLayout)
+            (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordAs "as" Layout.maybeLayout)
             Tokens.functionNameNode
         )
         (ParserFast.map2
@@ -64,7 +64,10 @@ maybeComposedWith =
                 , syntax = PatternComposedWithCons patternResult.syntax
                 }
             )
-            (ParserFast.symbolFollowedBy "::" Layout.maybeLayout)
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolColonColon
+                "::"
+                Layout.maybeLayout
+            )
             pattern
         )
         { comments = Rope.empty, syntax = PatternComposedWithNothing () }
@@ -80,7 +83,7 @@ parensPattern =
             , syntax = Node range contentResult.syntax
             }
         )
-        (ParserFast.symbolFollowedBy "(" Layout.maybeLayout)
+        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolParensOpen "(" Layout.maybeLayout)
         -- yes, (  ) is a valid pattern but not a valid type or expression
         (ParserFast.oneOf2
             (ParserFast.map3
@@ -102,12 +105,16 @@ parensPattern =
                 Layout.maybeLayout
                 (ParserWithComments.until
                     Tokens.parensEnd
-                    (ParserFast.symbolFollowedBy ","
+                    (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolComma
+                        ","
                         (Layout.maybeAroundBothSides pattern)
                     )
                 )
             )
-            (ParserFast.symbol ")" { comments = Rope.empty, syntax = UnitPattern })
+            (ParserFast.symbol ParserFast.ExpectingSymbolParensClose
+                ")"
+                { comments = Rope.empty, syntax = UnitPattern }
+            )
         )
 
 
@@ -151,9 +158,15 @@ listPattern =
                     , syntax = Node range (ListPattern elements.syntax)
                     }
         )
-        (ParserFast.symbolFollowedBy "[" Layout.maybeLayout)
+        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolSquareOpen
+            "["
+            Layout.maybeLayout
+        )
         (ParserFast.oneOf2
-            (ParserFast.symbol "]" Nothing)
+            (ParserFast.symbol ParserFast.ExpectingSymbolSquareClose
+                "]"
+                Nothing
+            )
             (ParserFast.map3
                 (\head commentsAfterHead tail ->
                     Just
@@ -167,11 +180,12 @@ listPattern =
                 pattern
                 Layout.maybeLayout
                 (ParserWithComments.many
-                    (ParserFast.symbolFollowedBy ","
+                    (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolComma
+                        ","
                         (Layout.maybeAroundBothSides pattern)
                     )
                 )
-                |> ParserFast.followedBySymbol "]"
+                |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolSquareClose "]"
             )
         )
 
@@ -213,7 +227,8 @@ patternNotDirectlyComposing =
 
 allPattern : Parser (WithComments (Node Pattern))
 allPattern =
-    ParserFast.symbolWithRange "_"
+    ParserFast.symbolWithRange ParserFast.ExpectingSymbolUnderscore
+        "_"
         (\range ->
             { comments = Rope.empty
             , syntax = Node range AllPattern
@@ -223,7 +238,8 @@ allPattern =
 
 unitPattern : Parser (WithComments (Node Pattern))
 unitPattern =
-    ParserFast.symbolWithRange "()"
+    ParserFast.symbolWithRange ParserFast.ExpectingSymbolParensOpenParensClose
+        "()"
         (\range ->
             { comments = Rope.empty
             , syntax = Node range UnitPattern
@@ -252,7 +268,10 @@ maybeDotTypeNamesTuple =
                 Just ( qualificationAfter, unqualified ) ->
                     Just ( startName :: qualificationAfter, unqualified )
         )
-        (ParserFast.symbolFollowedBy "." Tokens.typeName)
+        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolDot
+            "."
+            Tokens.typeName
+        )
         (ParserFast.lazy (\() -> maybeDotTypeNamesTuple))
         Nothing
 
@@ -346,7 +365,10 @@ recordPattern =
                 Node range (RecordPattern elements.syntax)
             }
         )
-        (ParserFast.symbolFollowedBy "{" Layout.maybeLayout)
+        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolCurlyOpen
+            "{"
+            Layout.maybeLayout
+        )
         (ParserFast.oneOf2
             (ParserFast.map3
                 (\head commentsAfterHead tail ->
@@ -365,12 +387,18 @@ recordPattern =
                             , syntax = name
                             }
                         )
-                        (ParserFast.symbolFollowedBy "," Layout.maybeLayout)
+                        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolComma
+                            ","
+                            Layout.maybeLayout
+                        )
                         Tokens.functionNameNode
                         Layout.maybeLayout
                     )
                 )
-                |> ParserFast.followedBySymbol "}"
+                |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolCurlyClose "}"
             )
-            (ParserFast.symbol "}" { comments = Rope.empty, syntax = [] })
+            (ParserFast.symbol ParserFast.ExpectingSymbolCurlyClose
+                "}"
+                { comments = Rope.empty, syntax = [] }
+            )
         )

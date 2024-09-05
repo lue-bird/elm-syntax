@@ -20,12 +20,15 @@ exposeDefinition =
             , syntax = Node range exposingListInnerResult.syntax
             }
         )
-        (ParserFast.symbolFollowedBy "exposing"
-            (Layout.maybeLayout |> ParserFast.followedBySymbol "(")
+        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolExposing
+            "exposing"
+            (Layout.maybeLayout
+                |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolParensClose "("
+            )
         )
         Layout.optimisticLayout
         (exposingListInner
-            |> ParserFast.followedBySymbol ")"
+            |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolParensClose ")"
         )
 
 
@@ -48,7 +51,8 @@ exposingListInner =
             exposable
             Layout.maybeLayout
             (ParserWithComments.many
-                (ParserFast.symbolFollowedBy ","
+                (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolComma
+                    ","
                     (Layout.maybeAroundBothSides exposable)
                 )
             )
@@ -59,7 +63,7 @@ exposingListInner =
                 , syntax = All range
                 }
             )
-            (ParserFast.symbolFollowedBy ".." Layout.maybeLayout)
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolDotDot ".." Layout.maybeLayout)
         )
 
 
@@ -79,7 +83,8 @@ infixExpose =
             , syntax = Node range (InfixExpose infixName)
             }
         )
-        (ParserFast.symbolFollowedBy "("
+        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolParensOpen
+            "("
             (ParserFast.ifFollowedByWhileWithoutLinebreak
                 (\c -> c /= ')' && c /= '\n' && c /= ' ')
                 (\c -> c /= ')' && c /= '\n' && c /= ' ')
@@ -112,10 +117,15 @@ typeExpose =
             (\range left right ->
                 { comments = left |> Rope.prependTo right, syntax = Just range }
             )
-            (ParserFast.symbolFollowedBy "("
-                (Layout.maybeLayout |> ParserFast.followedBySymbol "..")
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolParensOpen
+                "("
+                (Layout.maybeLayout
+                    |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolDotDot ".."
+                )
             )
-            (Layout.maybeLayout |> ParserFast.followedBySymbol ")")
+            (Layout.maybeLayout
+                |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolParensClose ")"
+            )
             { comments = Rope.empty, syntax = Nothing }
         )
 

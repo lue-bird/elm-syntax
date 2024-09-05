@@ -80,27 +80,28 @@ isNotReserved name =
 
 inToken : ParserFast.Parser ()
 inToken =
-    ParserFast.keyword "in" ()
+    ParserFast.keyword ParserFast.ExpectingKeywordIn "in" ()
 
 
 escapedCharValueMap : (Char -> res) -> ParserFast.Parser res
 escapedCharValueMap charToRes =
     ParserFast.oneOf7
-        (ParserFast.symbol "'" (charToRes '\''))
-        (ParserFast.symbol "\"" (charToRes '"'))
-        (ParserFast.symbol "n" (charToRes '\n'))
-        (ParserFast.symbol "t" (charToRes '\t'))
+        (ParserFast.symbol ParserFast.ExpectingSymbolSingleQuote "'" (charToRes '\''))
+        (ParserFast.symbol ParserFast.ExpectingSymbolDoubleQuote "\"" (charToRes '"'))
+        (ParserFast.symbol ParserFast.ExpectingSymbolLowercaseN "n" (charToRes '\n'))
+        (ParserFast.symbol ParserFast.ExpectingSymbolLowercaseT "t" (charToRes '\t'))
         -- Eventhough Elm-format will change \r to a unicode version. When you dont use elm-format, this will not happen.
-        (ParserFast.symbol "r" (charToRes '\u{000D}'))
-        (ParserFast.symbol "\\" (charToRes '\\'))
-        (ParserFast.symbolFollowedBy "u{"
+        (ParserFast.symbol ParserFast.ExpectingSymbolLowercaseR "r" (charToRes '\u{000D}'))
+        (ParserFast.symbol ParserFast.ExpectingSymbolBackSlash "\\" (charToRes '\\'))
+        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolLowercaseUCurlyOpen
+            "u{"
             (ParserFast.ifFollowedByWhileMapWithoutLinebreak
                 (\hex ->
                     charToRes (Char.fromCode (hexStringToInt hex))
                 )
                 Char.isHexDigit
                 Char.isHexDigit
-                |> ParserFast.followedBySymbol "}"
+                |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolCurlyClose "}"
             )
         )
 
@@ -191,7 +192,8 @@ charToHex c =
 
 characterLiteralMapWithRange : (Range -> Char -> res) -> ParserFast.Parser res
 characterLiteralMapWithRange rangeAndCharToRes =
-    ParserFast.symbolFollowedBy "'"
+    ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolSingleQuote
+        "'"
         (ParserFast.oneOf2MapWithStartRowColumnAndEndRowColumn
             (\startRow startColumn char endRow endColumn ->
                 rangeAndCharToRes
@@ -200,7 +202,10 @@ characterLiteralMapWithRange rangeAndCharToRes =
                     }
                     char
             )
-            (ParserFast.symbolFollowedBy "\\" (escapedCharValueMap identity))
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolBackSlash
+                "\\"
+                (escapedCharValueMap identity)
+            )
             (\startRow startColumn char endRow endColumn ->
                 rangeAndCharToRes
                     { start = { row = startRow, column = startColumn - 1 }
@@ -209,13 +214,14 @@ characterLiteralMapWithRange rangeAndCharToRes =
                     char
             )
             ParserFast.anyChar
-            |> ParserFast.followedBySymbol "'"
+            |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolSingleQuote "'"
         )
 
 
 singleOrTripleQuotedStringLiteralMapWithRange : (Range -> String -> res) -> ParserFast.Parser res
 singleOrTripleQuotedStringLiteralMapWithRange rangeAndStringToRes =
-    ParserFast.symbolFollowedBy "\""
+    ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolDoubleQuote
+        "\""
         (ParserFast.oneOf2MapWithStartRowColumnAndEndRowColumn
             (\startRow startColumn string endRow endColumn ->
                 rangeAndStringToRes
@@ -224,7 +230,8 @@ singleOrTripleQuotedStringLiteralMapWithRange rangeAndStringToRes =
                     }
                     string
             )
-            (ParserFast.symbolFollowedBy "\"\""
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolDoubleQuoteDoubleQuote
+                "\"\""
                 tripleQuotedStringLiteralOfterTripleDoubleQuote
             )
             (\startRow startColumn string endRow endColumn ->
@@ -240,9 +247,12 @@ singleOrTripleQuotedStringLiteralMapWithRange rangeAndStringToRes =
 
 singleQuotedStringLiteralAfterDoubleQuote : ParserFast.Parser String
 singleQuotedStringLiteralAfterDoubleQuote =
-    ParserFast.loopUntil (ParserFast.symbol "\"" ())
+    ParserFast.loopUntil (ParserFast.symbol ParserFast.ExpectingSymbolDoubleQuote "\"" ())
         (ParserFast.oneOf2
-            (ParserFast.symbolFollowedBy "\\" (escapedCharValueMap String.fromChar))
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolBackSlash
+                "\\"
+                (escapedCharValueMap String.fromChar)
+            )
             (ParserFast.whileWithoutLinebreak (\c -> c /= '"' && c /= '\\' && not (Char.Extra.isUtf16Surrogate c)))
         )
         ""
@@ -254,10 +264,14 @@ singleQuotedStringLiteralAfterDoubleQuote =
 
 tripleQuotedStringLiteralOfterTripleDoubleQuote : ParserFast.Parser String
 tripleQuotedStringLiteralOfterTripleDoubleQuote =
-    ParserFast.loopUntil (ParserFast.symbol "\"\"\"" ())
+    ParserFast.loopUntil
+        (ParserFast.symbol ParserFast.ExpectingSymbolDoubleQuoteDoubleQuoteDoubleQuote "\"\"\"" ())
         (ParserFast.oneOf3
-            (ParserFast.symbol "\"" "\"")
-            (ParserFast.symbolFollowedBy "\\" (escapedCharValueMap String.fromChar))
+            (ParserFast.symbol ParserFast.ExpectingSymbolDoubleQuote "\"" "\"")
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolBackSlash
+                "\\"
+                (escapedCharValueMap String.fromChar)
+            )
             (ParserFast.while (\c -> c /= '"' && c /= '\\' && not (Char.Extra.isUtf16Surrogate c)))
         )
         ""
@@ -448,9 +462,9 @@ isOperatorSymbolChar c =
 
 equal : ParserFast.Parser ()
 equal =
-    ParserFast.symbol "=" ()
+    ParserFast.symbol ParserFast.ExpectingSymbolEquals "=" ()
 
 
 parensEnd : ParserFast.Parser ()
 parensEnd =
-    ParserFast.symbol ")" ()
+    ParserFast.symbol ParserFast.ExpectingSymbolParensClose ")" ()

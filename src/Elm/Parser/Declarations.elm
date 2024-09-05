@@ -197,7 +197,7 @@ declarationWithDocumentation =
                     _ ->
                         True
             )
-            "Expected to find the same name for declaration and signature"
+            ParserFast.ExpectingSameNameForSignatureAndImplementation
 
 
 type DeclarationAfterDocumentation
@@ -284,7 +284,10 @@ functionAfterDocumentation =
                         }
                     }
             )
-            (ParserFast.symbolFollowedBy ":" Layout.maybeLayout)
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolColon
+                ":"
+                Layout.maybeLayout
+            )
             TypeAnnotation.typeAnnotation
             (Layout.layoutStrictFollowedBy
                 Tokens.functionNameNode
@@ -375,7 +378,10 @@ functionDeclarationWithoutDocumentation =
                     , typeAnnotation = typeAnnotationResult.syntax
                     }
             )
-            (ParserFast.symbolFollowedBy ":" Layout.maybeLayout)
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolColon
+                ":"
+                Layout.maybeLayout
+            )
             TypeAnnotation.typeAnnotation
             (Layout.layoutStrictFollowedBy
                 Tokens.functionNameNode
@@ -414,7 +420,7 @@ functionDeclarationWithoutDocumentation =
                     _ ->
                         True
             )
-            "Expected to find the same name for declaration and signature"
+            ParserFast.ExpectingSameNameForSignatureAndImplementation
 
 
 parameterPatternsEqual : Parser (WithComments (List (Node Pattern)))
@@ -448,12 +454,13 @@ infixDeclaration =
                     )
             }
         )
-        (ParserFast.keywordFollowedBy "infix" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordInfix "infix" Layout.maybeLayout)
         infixDirection
         Layout.maybeLayout
         (ParserFast.integerDecimalMapWithRange Node)
         Layout.maybeLayout
-        (ParserFast.symbolFollowedBy "("
+        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolParensOpen
+            "("
             (ParserFast.whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
                 (\operatorRange operator ->
                     Node
@@ -467,7 +474,9 @@ infixDeclaration =
                 ")"
             )
         )
-        (Layout.maybeLayout |> ParserFast.followedBySymbol "=")
+        (Layout.maybeLayout
+            |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolEquals "="
+        )
         Layout.maybeLayout
         Tokens.functionNameNode
 
@@ -475,9 +484,15 @@ infixDeclaration =
 infixDirection : ParserFast.Parser (Node Infix.InfixDirection)
 infixDirection =
     ParserFast.oneOf3
-        (ParserFast.mapWithRange Node (ParserFast.keyword "right" Infix.Right))
-        (ParserFast.mapWithRange Node (ParserFast.keyword "left" Infix.Left))
-        (ParserFast.mapWithRange Node (ParserFast.keyword "non" Infix.Non))
+        (ParserFast.mapWithRange Node
+            (ParserFast.keyword ParserFast.ExpectingKeywordRight "right" Infix.Right)
+        )
+        (ParserFast.mapWithRange Node
+            (ParserFast.keyword ParserFast.ExpectingKeywordLeft "left" Infix.Left)
+        )
+        (ParserFast.mapWithRange Node
+            (ParserFast.keyword ParserFast.ExpectingKeywordNon "non" Infix.Non)
+        )
 
 
 portDeclarationAfterDocumentation : Parser (WithComments DeclarationAfterDocumentation)
@@ -497,9 +512,11 @@ portDeclarationAfterDocumentation =
                     }
             }
         )
-        (ParserFast.keywordFollowedBy "port" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordPort "port" Layout.maybeLayout)
         Tokens.functionNameNode
-        (Layout.maybeLayout |> ParserFast.followedBySymbol ":")
+        (Layout.maybeLayout
+            |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolColon ":"
+        )
         Layout.maybeLayout
         typeAnnotation
 
@@ -529,9 +546,11 @@ portDeclarationWithoutDocumentation =
                     )
             }
         )
-        (ParserFast.keywordFollowedBy "port" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordPort "port" Layout.maybeLayout)
         Tokens.functionNameNode
-        (Layout.maybeLayout |> ParserFast.followedBySymbol ":")
+        (Layout.maybeLayout
+            |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolColon ":"
+        )
         Layout.maybeLayout
         typeAnnotation
 
@@ -544,7 +563,11 @@ typeOrTypeAliasDefinitionAfterDocumentation =
             , syntax = declarationAfterDocumentation.syntax
             }
         )
-        (ParserFast.keywordFollowedBy "type" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy
+            ParserFast.ExpectingKeywordType
+            "type"
+            Layout.maybeLayout
+        )
         (ParserFast.oneOf2
             typeAliasDefinitionAfterDocumentationAfterTypePrefix
             customTypeDefinitionAfterDocumentationAfterTypePrefix
@@ -569,7 +592,10 @@ typeAliasDefinitionAfterDocumentationAfterTypePrefix =
                     }
             }
         )
-        (ParserFast.keywordFollowedBy "alias" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordAlias
+            "alias"
+            Layout.maybeLayout
+        )
         Tokens.typeNameNode
         Layout.maybeLayout
         typeGenericListEquals
@@ -602,7 +628,8 @@ customTypeDefinitionAfterDocumentationAfterTypePrefix =
         Layout.maybeLayout
         valueConstructorOptimisticLayout
         (ParserWithComments.manyWithoutReverse
-            (ParserFast.symbolFollowedBy "|"
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolVerticalBar
+                "|"
                 (Layout.positivelyIndentedPlusFollowedBy 1
                     (ParserFast.map2
                         (\commentsBeforePipe variantResult ->
@@ -676,7 +703,8 @@ typeOrTypeAliasDefinitionWithoutDocumentation =
                             )
                     }
         )
-        (ParserFast.keywordFollowedBy "type"
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordType
+            "type"
             Layout.maybeLayout
         )
         (ParserFast.oneOf2
@@ -703,7 +731,7 @@ typeAliasDefinitionWithoutDocumentationAfterTypePrefix =
                     }
             }
         )
-        (ParserFast.keywordFollowedBy "alias" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordAlias "alias" Layout.maybeLayout)
         Tokens.typeNameNode
         Layout.maybeLayout
         typeGenericListEquals
@@ -736,7 +764,8 @@ customTypeDefinitionWithoutDocumentationAfterTypePrefix =
         Layout.maybeLayout
         valueConstructorOptimisticLayout
         (ParserWithComments.manyWithoutReverse
-            (ParserFast.symbolFollowedBy "|"
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolVerticalBar
+                "|"
                 (Layout.positivelyIndentedPlusFollowedBy 1
                     (ParserFast.map2
                         (\commentsBeforePipe variantResult ->

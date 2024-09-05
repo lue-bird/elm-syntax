@@ -71,7 +71,7 @@ importDefinition =
                     }
             }
         )
-        (ParserFast.keywordFollowedBy "import" Layout.maybeLayout)
+        (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordImport "import" Layout.maybeLayout)
         moduleName
         Layout.optimisticLayout
         (ParserFast.map3OrSucceed
@@ -81,7 +81,7 @@ importDefinition =
                     , syntax = moduleAliasNode
                     }
             )
-            (ParserFast.keywordFollowedBy "as" Layout.maybeLayout)
+            (ParserFast.keywordFollowedBy ParserFast.ExpectingKeywordAs "as" Layout.maybeLayout)
             (Tokens.typeNameMapWithRange
                 (\range moduleAlias ->
                     Node range [ moduleAlias ]

@@ -8,7 +8,8 @@ import ParserFast exposing (Parser)
 
 singleLineComment : ParserFast.Parser (Node String)
 singleLineComment =
-    ParserFast.symbolFollowedBy "--"
+    ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolMinusMinus
+        "--"
         (ParserFast.whileMap
             (\c -> c /= '\u{000D}' && c /= '\n' && not (Char.Extra.isUtf16Surrogate c))
             (\content -> "--" ++ content)
@@ -31,13 +32,15 @@ multilineComment =
 
 problemUnexpectedDocumentation : Parser a
 problemUnexpectedDocumentation =
-    ParserFast.problem "unexpected documentation comment"
+    ParserFast.problem ParserFast.ExpectingMultilineCommentNotDocumentation
 
 
 multiLineCommentNoCheck : Parser (Node String)
 multiLineCommentNoCheck =
     ParserFast.nestableMultiCommentMapWithRange Node
+        ParserFast.ExpectingSymbolCurlyOpenMinus
         ( '{', "-" )
+        ParserFast.ExpectingSymbolMinusCurlyClose
         ( '-', "}" )
 
 

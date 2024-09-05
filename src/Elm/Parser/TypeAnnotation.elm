@@ -38,7 +38,8 @@ typeAnnotation =
                 , syntax = Just typeAnnotationResult.syntax
                 }
             )
-            (ParserFast.symbolFollowedBy "->"
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolMinusGreaterThan
+                "->"
                 (Layout.positivelyIndentedPlusFollowedBy 2
                     Layout.maybeLayout
                 )
@@ -68,9 +69,11 @@ typeAnnotationNoFnIncludingTypedWithArguments =
 
 parensTypeAnnotation : Parser (WithComments (Node TypeAnnotation))
 parensTypeAnnotation =
-    ParserFast.symbolFollowedBy "("
+    ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolParensOpen
+        "("
         (ParserFast.oneOf2
-            (ParserFast.symbolWithEndLocation ")"
+            (ParserFast.symbolWithEndLocation ParserFast.ExpectingSymbolParensClose
+                ")"
                 (\end ->
                     { comments = Rope.empty
                     , syntax =
@@ -125,7 +128,10 @@ parensTypeAnnotation =
                             , syntax = typeAnnotationResult.syntax
                             }
                         )
-                        (ParserFast.symbolFollowedBy "," Layout.maybeLayout)
+                        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolComma
+                            ","
+                            Layout.maybeLayout
+                        )
                         typeAnnotation
                         Layout.maybeLayout
                     )
@@ -161,7 +167,10 @@ recordTypeAnnotation =
                         Node range afterCurlyResult
             }
         )
-        (ParserFast.symbolFollowedBy "{" Layout.maybeLayout)
+        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolCurlyOpen
+            "{"
+            Layout.maybeLayout
+        )
         (ParserFast.oneOf2
             (ParserFast.map3
                 (\firstNameNode commentsAfterFirstName afterFirstName ->
@@ -182,7 +191,8 @@ recordTypeAnnotation =
                 Tokens.functionNameNode
                 Layout.maybeLayout
                 (ParserFast.oneOf2
-                    (ParserFast.symbolFollowedBy "|"
+                    (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolVerticalBar
+                        "|"
                         (ParserFast.map3WithRange
                             (\range commentsBefore head tail ->
                                 { comments =
@@ -197,7 +207,8 @@ recordTypeAnnotation =
                             Layout.maybeLayout
                             recordFieldDefinition
                             (ParserWithComments.many
-                                (ParserFast.symbolFollowedBy ","
+                                (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolComma
+                                    ","
                                     (ParserFast.map2
                                         (\commentsBefore field ->
                                             { comments = commentsBefore |> Rope.prependTo field.comments
@@ -225,18 +236,27 @@ recordTypeAnnotation =
                                     }
                             }
                         )
-                        (ParserFast.symbolFollowedBy ":" Layout.maybeLayout)
+                        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolColon
+                            ":"
+                            Layout.maybeLayout
+                        )
                         typeAnnotation
                         Layout.maybeLayout
                         (ParserFast.orSucceed
-                            (ParserFast.symbolFollowedBy "," recordFieldsTypeAnnotation)
+                            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolComma
+                                ","
+                                recordFieldsTypeAnnotation
+                            )
                             { comments = Rope.empty, syntax = [] }
                         )
                     )
                 )
-                |> ParserFast.followedBySymbol "}"
+                |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolCurlyClose "}"
             )
-            (ParserFast.symbol "}" { comments = Rope.empty, syntax = Nothing })
+            (ParserFast.symbol ParserFast.ExpectingSymbolCurlyClose
+                "}"
+                { comments = Rope.empty, syntax = Nothing }
+            )
         )
 
 
@@ -264,7 +284,8 @@ recordFieldsTypeAnnotation =
         Layout.maybeLayout
         recordFieldDefinition
         (ParserWithComments.many
-            (ParserFast.symbolFollowedBy ","
+            (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolComma
+                ","
                 (ParserFast.map2
                     (\commentsBefore field ->
                         { comments = commentsBefore |> Rope.prependTo field.comments
@@ -293,7 +314,9 @@ recordFieldDefinition =
         )
         Layout.maybeLayout
         Tokens.functionNameNode
-        (Layout.maybeLayout |> ParserFast.followedBySymbol ":")
+        (Layout.maybeLayout
+            |> ParserFast.followedBySymbol ParserFast.ExpectingSymbolColon ":"
+        )
         Layout.maybeLayout
         typeAnnotation
         -- This extra whitespace is just included for compatibility with earlier version
@@ -336,7 +359,10 @@ maybeDotTypeNamesTuple =
                 Just ( qualificationAfter, unqualified ) ->
                     Just ( firstName :: qualificationAfter, unqualified )
         )
-        (ParserFast.symbolFollowedBy "." Tokens.typeName)
+        (ParserFast.symbolFollowedBy ParserFast.ExpectingSymbolDot
+            "."
+            Tokens.typeName
+        )
         (ParserFast.lazy (\() -> maybeDotTypeNamesTuple))
         Nothing
 

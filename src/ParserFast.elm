@@ -8,7 +8,7 @@ module ParserFast exposing
     , map, validate, lazy
     , map2, map2WithStartLocation, map2WithRange, map3, map3WithStartLocation, map3WithRange, map4, map4WithRange, map5, map5WithStartLocation, map5WithRange, map6, map6WithStartLocation, map6WithRange, map7WithRange, map8WithStartLocation, map9WithRange
     , loopWhileSucceeds, loopWhileSucceedsOntoResultFromParser, loopUntil
-    , orSucceed, mapOrSucceed, map2OrSucceed, map2WithRangeOrSucceed, map3OrSucceed, map4OrSucceed, oneOf2, oneOf2Map, oneOf2MapWithStartRowColumnAndEndRowColumn, oneOf2OrSucceed, oneOf3, oneOf4, oneOf5, oneOf7, oneOf9
+    , orSucceed, mapOrSucceed, map2OrSucceed, map2WithRangeOrSucceed, map3OrSucceed, map4OrSucceed, oneOf2, oneOf2Map, oneOf2MapWithStartRowColumnAndEndRowColumn, oneOf3, oneOf4, oneOf5, oneOf7, oneOf9
     , withIndentSetToColumn, withIndentSetToColumnMinus, columnIndentAndThen, validateEndColumnIndentation
     , mapWithRange, columnAndThen, offsetSourceAndThen, offsetSourceAndThenOrSucceed
     , problem
@@ -109,7 +109,7 @@ sample of what that code might look like:
 This parser will keep trying down the list of parsers until one of them starts committing.
 Once a path is chosen, it does not come back and try the others.
 
-@docs orSucceed, mapOrSucceed, map2OrSucceed, map2WithRangeOrSucceed, map3OrSucceed, map4OrSucceed, oneOf2, oneOf2Map, oneOf2MapWithStartRowColumnAndEndRowColumn, oneOf2OrSucceed, oneOf3, oneOf4, oneOf5, oneOf7, oneOf9
+@docs orSucceed, mapOrSucceed, map2OrSucceed, map2WithRangeOrSucceed, map3OrSucceed, map4OrSucceed, oneOf2, oneOf2Map, oneOf2MapWithStartRowColumnAndEndRowColumn, oneOf3, oneOf4, oneOf5, oneOf7, oneOf9
 
 
 # Indentation, Locations and source
@@ -1170,32 +1170,6 @@ oneOf2 (Parser attemptFirst) (Parser attemptSecond) =
 
                                 else
                                     Bad False (ExpectingOneOf firstX secondX [])
-        )
-
-
-oneOf2OrSucceed : Parser a -> Parser a -> a -> Parser a
-oneOf2OrSucceed (Parser attemptFirst) (Parser attemptSecond) thirdRes =
-    Parser
-        (\s ->
-            case attemptFirst s of
-                (Good _ _) as firstGood ->
-                    firstGood
-
-                (Bad firstCommitted _) as firstBad ->
-                    if firstCommitted then
-                        firstBad
-
-                    else
-                        case attemptSecond s of
-                            (Good _ _) as secondGood ->
-                                secondGood
-
-                            (Bad secondCommitted _) as secondBad ->
-                                if secondCommitted then
-                                    secondBad
-
-                                else
-                                    Good thirdRes s
         )
 
 

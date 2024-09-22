@@ -236,6 +236,18 @@ all =
             \() ->
                 "x as (y)"
                     |> expectInvalid
+        , test "should fail to parse consecutive as" <|
+            \() ->
+                "x as y as z"
+                    |> expectInvalid
+        , test "should fail to parse :: after as" <|
+            \() ->
+                "x as y :: z"
+                    |> expectInvalid
+        , test "should fail to parse :: after as even when :: was already used before" <|
+            \() ->
+                "w :: x as y :: z"
+                    |> expectInvalid
         , test "should fail to parse when right side is an invalid variable name" <|
             \() ->
                 "x as _y"

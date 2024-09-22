@@ -10,68 +10,74 @@ import ParserWithComments exposing (WithComments)
 import Rope
 
 
-type PatternComposedWith
-    = PatternComposedWithNothing ()
-    | PatternComposedWithAs (Node String)
-    | PatternComposedWithCons (Node Pattern)
-
-
 pattern : Parser (WithComments (Node Pattern))
 pattern =
-    ParserFast.lazy (\() -> composablePatternTryToCompose)
+    ParserFast.lazy (\() -> patternMaybeComposed)
 
 
-composablePatternTryToCompose : Parser (WithComments (Node Pattern))
-composablePatternTryToCompose =
-    ParserFast.map3
-        (\x commentsAfterLeft maybeComposedWithResult ->
+patternMaybeComposed : Parser (WithComments (Node Pattern))
+patternMaybeComposed =
+    ParserFast.map2
+        (\leftMaybeConsed maybeAsExtension ->
             { comments =
-                x.comments
-                    |> Rope.prependTo commentsAfterLeft
-                    |> Rope.prependTo maybeComposedWithResult.comments
+                leftMaybeConsed.comments
+                    |> Rope.prependTo maybeAsExtension.comments
             , syntax =
-                case maybeComposedWithResult.syntax of
-                    PatternComposedWithNothing () ->
-                        x.syntax
+                case maybeAsExtension.syntax of
+                    Nothing ->
+                        leftMaybeConsed.syntax
 
-                    PatternComposedWithAs anotherName ->
-                        Node.combine Pattern.AsPattern x.syntax anotherName
-
-                    PatternComposedWithCons y ->
-                        Node.combine Pattern.UnConsPattern x.syntax y
+                    Just anotherName ->
+                        Node.combine Pattern.AsPattern leftMaybeConsed.syntax anotherName
             }
         )
-        composablePattern
-        Layout.maybeLayout
-        maybeComposedWith
-
-
-maybeComposedWith : Parser { comments : ParserWithComments.Comments, syntax : PatternComposedWith }
-maybeComposedWith =
-    ParserFast.oneOf2OrSucceed
-        (ParserFast.keywordFollowedBy "as"
+        (ParserFast.loopWhileSucceedsOntoResultFromParser
+            (ParserFast.symbolFollowedBy "::"
+                (ParserFast.map3
+                    (\commentsAfterCons patternResult commentsAfterTailSubPattern ->
+                        { comments =
+                            commentsAfterCons
+                                |> Rope.prependTo patternResult.comments
+                                |> Rope.prependTo commentsAfterTailSubPattern
+                        , syntax = patternResult.syntax
+                        }
+                    )
+                    Layout.maybeLayout
+                    composablePattern
+                    Layout.maybeLayout
+                )
+            )
             (ParserFast.map2
-                (\commentsAfterAs name ->
-                    { comments = commentsAfterAs
-                    , syntax = PatternComposedWithAs name
+                (\startPatternResult commentsAfter ->
+                    { comments = startPatternResult.comments |> Rope.prependTo commentsAfter
+                    , syntax = startPatternResult.syntax
                     }
                 )
+                composablePattern
                 Layout.maybeLayout
-                Tokens.functionNameNode
             )
+            (\consedWith soFar ->
+                { comments = soFar.comments |> Rope.prependTo consedWith.comments
+                , syntax =
+                    Node.combine Pattern.UnConsPattern soFar.syntax consedWith.syntax
+                }
+            )
+            Basics.identity
         )
-        (ParserFast.symbolFollowedBy "::"
-            (ParserFast.map2
-                (\commentsAfterCons patternResult ->
-                    { comments = patternResult.comments |> Rope.prependTo commentsAfterCons
-                    , syntax = PatternComposedWithCons patternResult.syntax
-                    }
+        (ParserFast.orSucceed
+            (ParserFast.keywordFollowedBy "as"
+                (ParserFast.map2
+                    (\commentsAfterAs name ->
+                        { comments = commentsAfterAs
+                        , syntax = Just name
+                        }
+                    )
+                    Layout.maybeLayout
+                    Tokens.functionNameNode
                 )
-                Layout.maybeLayout
-                pattern
             )
+            { comments = Rope.empty, syntax = Nothing }
         )
-        { comments = Rope.empty, syntax = PatternComposedWithNothing () }
 
 
 parensPattern : Parser (WithComments (Node Pattern))

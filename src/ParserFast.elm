@@ -7,7 +7,7 @@ module ParserFast exposing
     , skipWhileWhitespaceFollowedBy, followedBySkipWhileWhitespace, nestableMultiCommentMapWithRange
     , map, validate, lazy
     , map2, map2WithStartLocation, map2WithRange, map3, map3WithStartLocation, map3WithRange, map4, map4WithRange, map5, map5WithStartLocation, map5WithRange, map6, map6WithStartLocation, map6WithRange, map7WithRange, map8WithStartLocation, map9WithRange
-    , loopWhileSucceeds, loopWhileSucceedsOntoResultFromParser, loopUntil
+    , loopWhileSucceeds, loopWhileSucceedsOntoResultFromParser, loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe, loopWhileSucceedsRightToLeftStackUnsafe, loopUntil
     , orSucceed, mapOrSucceed, map2OrSucceed, map2WithRangeOrSucceed, map3OrSucceed, map4OrSucceed, oneOf2, oneOf2Map, oneOf2MapWithStartRowColumnAndEndRowColumn, oneOf3, oneOf4, oneOf5, oneOf7, oneOf9
     , withIndentSetToColumn, withIndentSetToColumnMinus, columnIndentAndThen, validateEndColumnIndentation
     , mapWithRange, columnAndThen, offsetSourceAndThen, offsetSourceAndThenOrSucceed
@@ -84,7 +84,7 @@ With `ParserFast`, you need to either
 
 @docs map2, map2WithStartLocation, map2WithRange, map3, map3WithStartLocation, map3WithRange, map4, map4WithRange, map5, map5WithStartLocation, map5WithRange, map6, map6WithStartLocation, map6WithRange, map7WithRange, map8WithStartLocation, map9WithRange
 
-@docs loopWhileSucceeds, loopWhileSucceedsOntoResultFromParser, loopUntil
+@docs loopWhileSucceeds, loopWhileSucceedsOntoResultFromParser, loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe, loopWhileSucceedsRightToLeftStackUnsafe, loopUntil
 
 
 ## choice
@@ -1518,6 +1518,74 @@ loopWhileSucceedsHelp ((Parser parseElement) as element) soFar reduce foldedToRe
 
             else
                 Good (foldedToRes soFar) s0
+
+
+loopWhileSucceedsRightToLeftStackUnsafe : Parser element -> folded -> (element -> folded -> folded) -> Parser folded
+loopWhileSucceedsRightToLeftStackUnsafe element initialFolded reduce =
+    Parser
+        (\s ->
+            loopWhileSucceedsFromRightToLeftStackUnsafeHelp element initialFolded reduce s
+        )
+
+
+loopWhileSucceedsFromRightToLeftStackUnsafeHelp : Parser element -> folded -> (element -> folded -> folded) -> State -> PStep folded
+loopWhileSucceedsFromRightToLeftStackUnsafeHelp ((Parser parseElement) as element) initialFolded reduce s0 =
+    case parseElement s0 of
+        Good elementResult s1 ->
+            case loopWhileSucceedsFromRightToLeftStackUnsafeHelp element initialFolded reduce s1 of
+                Good tailFolded s2 ->
+                    Good (reduce elementResult tailFolded) s2
+
+                tailBad ->
+                    tailBad
+
+        Bad elementCommitted x ->
+            if elementCommitted then
+                Bad True x
+
+            else
+                Good initialFolded s0
+
+
+loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe : Parser element -> Parser element -> (element -> element -> element) -> Parser element
+loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe (Parser parseLeftestElement) taiElement reduce =
+    Parser
+        (\s0 ->
+            case parseLeftestElement s0 of
+                Good elementResult s1 ->
+                    case loopWhileSucceedsRightToLeftStackUnsafeHelp taiElement reduce s1 of
+                        Good tailFolded s2 ->
+                            Good (reduce elementResult tailFolded) s2
+
+                        (Bad tailCommitted _) as tailBad ->
+                            if tailCommitted then
+                                tailBad
+
+                            else
+                                Good elementResult s1
+
+                Bad elementCommitted x ->
+                    Bad elementCommitted x
+        )
+
+
+loopWhileSucceedsRightToLeftStackUnsafeHelp : Parser element -> (element -> element -> element) -> State -> PStep element
+loopWhileSucceedsRightToLeftStackUnsafeHelp ((Parser parseElement) as element) reduce s0 =
+    case parseElement s0 of
+        Good elementResult s1 ->
+            case loopWhileSucceedsRightToLeftStackUnsafeHelp element reduce s1 of
+                Good tailFolded s2 ->
+                    Good (reduce elementResult tailFolded) s2
+
+                (Bad tailCommitted _) as tailBad ->
+                    if tailCommitted then
+                        tailBad
+
+                    else
+                        Good elementResult s1
+
+        Bad elementCommitted x ->
+            Bad elementCommitted x
 
 
 loopWhileSucceedsOntoResultFromParser :

@@ -31,7 +31,16 @@ patternMaybeComposed =
                         Node.combine Pattern.AsPattern leftMaybeConsed.syntax anotherName
             }
         )
-        (ParserFast.loopWhileSucceedsOntoResultFromParser
+        (ParserFast.loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe
+            (ParserFast.map2
+                (\startPatternResult commentsAfter ->
+                    { comments = startPatternResult.comments |> Rope.prependTo commentsAfter
+                    , syntax = startPatternResult.syntax
+                    }
+                )
+                composablePattern
+                Layout.maybeLayout
+            )
             (ParserFast.symbolFollowedBy "::"
                 (ParserFast.map3
                     (\commentsAfterCons patternResult commentsAfterTailSubPattern ->
@@ -47,22 +56,12 @@ patternMaybeComposed =
                     Layout.maybeLayout
                 )
             )
-            (ParserFast.map2
-                (\startPatternResult commentsAfter ->
-                    { comments = startPatternResult.comments |> Rope.prependTo commentsAfter
-                    , syntax = startPatternResult.syntax
-                    }
-                )
-                composablePattern
-                Layout.maybeLayout
-            )
-            (\consedWith soFar ->
-                { comments = soFar.comments |> Rope.prependTo consedWith.comments
+            (\consed afterCons ->
+                { comments = consed.comments |> Rope.prependTo afterCons.comments
                 , syntax =
-                    Node.combine Pattern.UnConsPattern soFar.syntax consedWith.syntax
+                    Node.combine Pattern.UnConsPattern consed.syntax afterCons.syntax
                 }
             )
-            Basics.identity
         )
         (ParserFast.orSucceed
             (ParserFast.keywordFollowedBy "as"

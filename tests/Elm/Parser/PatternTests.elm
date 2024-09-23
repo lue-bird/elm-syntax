@@ -64,6 +64,20 @@ all =
                             UnConsPattern (Node { start = { row = 1, column = 1 }, end = { row = 1, column = 2 } } <| VarPattern "n")
                                 (Node { start = { row = 1, column = 6 }, end = { row = 1, column = 10 } } <| VarPattern "tail")
                         )
+        , test "Uncons multiple" <|
+            \() ->
+                "a :: b :: cUp"
+                    |> expectAst
+                        (Node { start = { row = 1, column = 1 }, end = { row = 1, column = 14 } }
+                            (UnConsPattern
+                                (Node { start = { row = 1, column = 1 }, end = { row = 1, column = 2 } } (VarPattern "a"))
+                                (Node { start = { row = 1, column = 6 }, end = { row = 1, column = 14 } }
+                                    (UnConsPattern (Node { start = { row = 1, column = 6 }, end = { row = 1, column = 7 } } (VarPattern "b"))
+                                        (Node { start = { row = 1, column = 11 }, end = { row = 1, column = 14 } } (VarPattern "cUp"))
+                                    )
+                                )
+                            )
+                        )
         , test "Uncons with parens" <|
             \() ->
                 "(X x) :: xs"

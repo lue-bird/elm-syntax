@@ -90,22 +90,23 @@ referenceOrNumberExpression =
         numberExpression
 
 
-multiRecordAccess : ParserFast.Parser (List (Node String))
-multiRecordAccess =
-    ParserFast.loopWhileSucceeds
+followedByMultiRecordAccess : Parser (WithComments (Node Expression)) -> Parser (WithComments (Node Expression))
+followedByMultiRecordAccess beforeRecordAccesses =
+    ParserFast.loopWhileSucceedsOntoResultFromParser
         (ParserFast.symbolFollowedBy "." Tokens.functionNameNode)
-        []
-        (::)
-        List.reverse
-
-
-multiRecordAccessMap : (List (Node String) -> res) -> ParserFast.Parser res
-multiRecordAccessMap fieldsToRes =
-    ParserFast.loopWhileSucceeds
-        (ParserFast.symbolFollowedBy "." Tokens.functionNameNode)
-        []
-        (::)
-        (\reversed -> fieldsToRes (List.reverse reversed))
+        beforeRecordAccesses
+        (\((Node fieldRange _) as fieldNode) leftResult ->
+            let
+                ((Node leftRange _) as leftNode) =
+                    leftResult.syntax
+            in
+            { comments = leftResult.comments
+            , syntax =
+                Node { start = leftRange.start, end = fieldRange.end }
+                    (Expression.RecordAccess leftNode fieldNode)
+            }
+        )
+        Basics.identity
 
 
 precedence1ApR : InfixOperatorInfo
@@ -315,36 +316,17 @@ expressionAfterOpeningSquareBracket =
 recordExpressionFollowedByRecordAccess : Parser (WithComments (Node Expression))
 recordExpressionFollowedByRecordAccess =
     ParserFast.symbolFollowedBy "{"
-        (ParserFast.map2
-            (\leftestResult recordAccesses ->
-                case recordAccesses of
-                    [] ->
-                        leftestResult
-
-                    _ :: _ ->
-                        { comments = leftestResult.comments
-                        , syntax =
-                            recordAccesses
-                                |> List.foldl
-                                    (\((Node fieldRange _) as fieldNode) ((Node leftRange _) as leftNode) ->
-                                        Node { start = leftRange.start, end = fieldRange.end }
-                                            (Expression.RecordAccess leftNode fieldNode)
-                                    )
-                                    leftestResult.syntax
-                        }
+        (ParserFast.map2WithRange
+            (\range commentsBefore afterCurly ->
+                { comments =
+                    commentsBefore
+                        |> Rope.prependTo afterCurly.comments
+                , syntax = Node (rangeMoveStartLeftByOneColumn range) afterCurly.syntax
+                }
             )
-            (ParserFast.map2WithRange
-                (\range commentsBefore afterCurly ->
-                    { comments =
-                        commentsBefore
-                            |> Rope.prependTo afterCurly.comments
-                    , syntax = Node (rangeMoveStartLeftByOneColumn range) afterCurly.syntax
-                    }
-                )
-                Layout.maybeLayout
-                recordContentsCurlyEnd
-            )
-            multiRecordAccess
+            Layout.maybeLayout
+            recordContentsCurlyEnd
+            |> followedByMultiRecordAccess
         )
 
 
@@ -976,7 +958,7 @@ negationAfterMinus =
                     (Negation subExpressionResult.syntax)
             }
         )
-        (ParserFast.lazy (\() -> subExpression))
+        subExpression
 
 
 qualifiedOrVariantOrRecordConstructorReferenceExpressionFollowedByRecordAccess : Parser (WithComments (Node Expression))
@@ -985,42 +967,22 @@ qualifiedOrVariantOrRecordConstructorReferenceExpressionFollowedByRecordAccess =
         (\range firstName after ->
             { comments = Rope.empty
             , syntax =
-                case after of
-                    Nothing ->
-                        Node range (FunctionOrValue [] firstName)
+                Node range
+                    (case after of
+                        Nothing ->
+                            FunctionOrValue [] firstName
 
-                    Just ( qualificationAfter, unqualified, recordAccesses ) ->
-                        case recordAccesses of
-                            [] ->
-                                Node range (FunctionOrValue (firstName :: qualificationAfter) unqualified)
-
-                            (Node firstRecordAccessRange _) :: _ ->
-                                let
-                                    referenceNode : Node Expression
-                                    referenceNode =
-                                        Node
-                                            { start = range.start
-                                            , end =
-                                                { row = firstRecordAccessRange.start.row
-                                                , column = firstRecordAccessRange.start.column - 1
-                                                }
-                                            }
-                                            (FunctionOrValue (firstName :: qualificationAfter) unqualified)
-                                in
-                                recordAccesses
-                                    |> List.foldl
-                                        (\((Node fieldRange _) as fieldNode) ((Node leftRange _) as leftNode) ->
-                                            Node { start = leftRange.start, end = fieldRange.end }
-                                                (Expression.RecordAccess leftNode fieldNode)
-                                        )
-                                        referenceNode
+                        Just ( qualificationAfter, unqualified ) ->
+                            FunctionOrValue (firstName :: qualificationAfter) unqualified
+                    )
             }
         )
         Tokens.typeName
         maybeDotReferenceExpressionTuple
+        |> followedByMultiRecordAccess
 
 
-maybeDotReferenceExpressionTuple : ParserFast.Parser (Maybe ( List String, String, List (Node String) ))
+maybeDotReferenceExpressionTuple : ParserFast.Parser (Maybe ( List String, String ))
 maybeDotReferenceExpressionTuple =
     ParserFast.orSucceed
         (ParserFast.symbolFollowedBy "."
@@ -1030,22 +992,16 @@ maybeDotReferenceExpressionTuple =
                     (\firstName after ->
                         case after of
                             Nothing ->
-                                ( [], firstName, [] )
+                                ( [], firstName )
 
-                            Just ( qualificationAfter, unqualified, recordAccess ) ->
-                                ( firstName :: qualificationAfter, unqualified, recordAccess )
+                            Just ( qualificationAfter, unqualified ) ->
+                                ( firstName :: qualificationAfter, unqualified )
                     )
                     Tokens.typeName
                     (ParserFast.lazy (\() -> maybeDotReferenceExpressionTuple))
                 )
-                Basics.identity
-                (ParserFast.map2
-                    (\name recordAccesses ->
-                        Just ( [], name, recordAccesses )
-                    )
-                    Tokens.functionName
-                    multiRecordAccess
-                )
+                (\name -> Just ( [], name ))
+                Tokens.functionName
             )
         )
         Nothing
@@ -1053,33 +1009,14 @@ maybeDotReferenceExpressionTuple =
 
 unqualifiedFunctionReferenceExpressionFollowedByRecordAccess : Parser (WithComments (Node Expression))
 unqualifiedFunctionReferenceExpressionFollowedByRecordAccess =
-    ParserFast.map2
-        (\leftestResult recordAccesses ->
-            case recordAccesses of
-                [] ->
-                    leftestResult
-
-                _ :: _ ->
-                    { comments = leftestResult.comments
-                    , syntax =
-                        recordAccesses
-                            |> List.foldl
-                                (\((Node fieldRange _) as fieldNode) ((Node leftRange _) as leftNode) ->
-                                    Node { start = leftRange.start, end = fieldRange.end }
-                                        (Expression.RecordAccess leftNode fieldNode)
-                                )
-                                leftestResult.syntax
-                    }
+    Tokens.functionNameMapWithRange
+        (\range unqualified ->
+            { comments = Rope.empty
+            , syntax =
+                Node range (FunctionOrValue [] unqualified)
+            }
         )
-        (Tokens.functionNameMapWithRange
-            (\range unqualified ->
-                { comments = Rope.empty
-                , syntax =
-                    Node range (FunctionOrValue [] unqualified)
-                }
-            )
-        )
-        multiRecordAccess
+        |> followedByMultiRecordAccess
 
 
 recordAccessFunctionExpression : Parser (WithComments (Node Expression))
@@ -1150,39 +1087,14 @@ tupledExpressionInnerAfterOpeningParens =
                     |> Rope.prependTo tailParts.comments
             , syntax =
                 case tailParts.syntax of
-                    TupledParenthesizedFollowedByRecordAccesses recordAccesses ->
-                        case recordAccesses of
-                            [] ->
-                                Node
-                                    { start = { row = rangeAfterOpeningParens.start.row, column = rangeAfterOpeningParens.start.column - 1 }
-                                    , end = rangeAfterOpeningParens.end
-                                    }
-                                    (ParenthesizedExpression firstPart.syntax)
+                    TupledParenthesized () () ->
+                        Node
+                            { start = { row = rangeAfterOpeningParens.start.row, column = rangeAfterOpeningParens.start.column - 1 }
+                            , end = rangeAfterOpeningParens.end
+                            }
+                            (ParenthesizedExpression firstPart.syntax)
 
-                            (Node firstRecordAccessRange _) :: _ ->
-                                let
-                                    range : Range
-                                    range =
-                                        { start = { row = rangeAfterOpeningParens.start.row, column = rangeAfterOpeningParens.start.column - 1 }
-                                        , end =
-                                            { row = firstRecordAccessRange.start.row
-                                            , column = firstRecordAccessRange.start.column - 1
-                                            }
-                                        }
-
-                                    parenthesizedNode : Node Expression
-                                    parenthesizedNode =
-                                        Node range (ParenthesizedExpression firstPart.syntax)
-                                in
-                                recordAccesses
-                                    |> List.foldl
-                                        (\((Node fieldRange _) as fieldNode) ((Node leftRange _) as leftNode) ->
-                                            Node { start = leftRange.start, end = fieldRange.end }
-                                                (Expression.RecordAccess leftNode fieldNode)
-                                        )
-                                        parenthesizedNode
-
-                    TupledTwoOrThree ( secondPart, maybeThirdPart ) ->
+                    TupledTwoOrThree secondPart maybeThirdPart ->
                         Node
                             { start = { row = rangeAfterOpeningParens.start.row, column = rangeAfterOpeningParens.start.column - 1 }
                             , end = rangeAfterOpeningParens.end
@@ -1200,10 +1112,8 @@ tupledExpressionInnerAfterOpeningParens =
         expression
         Layout.maybeLayout
         (ParserFast.oneOf2
-            (ParserFast.symbolFollowedBy ")"
-                (multiRecordAccessMap
-                    (\recordAccesses -> { comments = Rope.empty, syntax = TupledParenthesizedFollowedByRecordAccesses recordAccesses })
-                )
+            (ParserFast.symbol ")"
+                { comments = Rope.empty, syntax = TupledParenthesized () () }
             )
             (ParserFast.symbolFollowedBy ","
                 (ParserFast.map4
@@ -1213,7 +1123,7 @@ tupledExpressionInnerAfterOpeningParens =
                                 |> Rope.prependTo partResult.comments
                                 |> Rope.prependTo commentsAfter
                                 |> Rope.prependTo maybeThirdPart.comments
-                        , syntax = TupledTwoOrThree ( partResult.syntax, maybeThirdPart.syntax )
+                        , syntax = TupledTwoOrThree partResult.syntax maybeThirdPart.syntax
                         }
                     )
                     Layout.maybeLayout
@@ -1241,11 +1151,12 @@ tupledExpressionInnerAfterOpeningParens =
                 )
             )
         )
+        |> followedByMultiRecordAccess
 
 
 type Tupled
-    = TupledParenthesizedFollowedByRecordAccesses (List (Node String))
-    | TupledTwoOrThree ( Node Expression, Maybe (Node Expression) )
+    = TupledParenthesized () ()
+    | TupledTwoOrThree (Node Expression) (Maybe (Node Expression))
 
 
 
@@ -1382,19 +1293,19 @@ subExpressionMaybeAppliedOptimisticLayout =
                             )
             }
         )
-        (ParserFast.lazy (\() -> subExpression))
+        subExpression
         Layout.optimisticLayout
         (ParserWithComments.manyWithoutReverse
-            (ParserFast.map2
-                (\arg commentsAfter ->
-                    { comments = arg.comments |> Rope.prependTo commentsAfter
-                    , syntax = arg.syntax
-                    }
+            (Layout.positivelyIndentedFollowedBy
+                (ParserFast.map2
+                    (\arg commentsAfter ->
+                        { comments = arg.comments |> Rope.prependTo commentsAfter
+                        , syntax = arg.syntax
+                        }
+                    )
+                    subExpression
+                    Layout.optimisticLayout
                 )
-                (Layout.positivelyIndentedFollowedBy
-                    (ParserFast.lazy (\() -> subExpression))
-                )
-                Layout.optimisticLayout
             )
         )
 

@@ -13,13 +13,8 @@ moduleName =
             Node range (head :: tail)
         )
         Tokens.typeName
-        moduleNameOrEmpty
-
-
-moduleNameOrEmpty : ParserFast.Parser ModuleName
-moduleNameOrEmpty =
-    ParserFast.map2OrSucceed
-        (\head tail -> head :: tail)
-        (ParserFast.symbolFollowedBy "." Tokens.typeName)
-        (ParserFast.lazy (\() -> moduleNameOrEmpty))
-        []
+        (ParserFast.loopWhileSucceedsRightToLeftStackUnsafe
+            (ParserFast.symbolFollowedBy "." Tokens.typeName)
+            []
+            (::)
+        )

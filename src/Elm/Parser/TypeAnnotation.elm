@@ -13,38 +13,42 @@ import Rope
 
 typeAnnotation : Parser (WithComments (Node TypeAnnotation))
 typeAnnotation =
-    ParserFast.map3
-        (\inType commentsAfterIn maybeOut ->
-            { comments =
-                inType.comments
-                    |> Rope.prependTo commentsAfterIn
-                    |> Rope.prependTo maybeOut.comments
-            , syntax =
-                case maybeOut.syntax of
-                    Nothing ->
-                        inType.syntax
-
-                    Just out ->
-                        Node.combine TypeAnnotation.FunctionTypeAnnotation inType.syntax out
-            }
-        )
-        (ParserFast.lazy (\() -> typeAnnotationNoFnIncludingTypedWithArguments))
-        Layout.optimisticLayout
-        (ParserFast.map2OrSucceed
-            (\commentsAfterArrow typeAnnotationResult ->
+    ParserFast.loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe
+        (ParserFast.map2
+            (\startType commentsAfter ->
                 { comments =
-                    commentsAfterArrow
-                        |> Rope.prependTo typeAnnotationResult.comments
-                , syntax = Just typeAnnotationResult.syntax
+                    startType.comments
+                        |> Rope.prependTo commentsAfter
+                , syntax = startType.syntax
                 }
             )
-            (ParserFast.symbolFollowedBy "->"
-                (Layout.positivelyIndentedPlusFollowedBy 2
+            (ParserFast.lazy (\() -> typeAnnotationNoFnIncludingTypedWithArguments))
+            Layout.optimisticLayout
+        )
+        (ParserFast.symbolFollowedBy "->"
+            (Layout.positivelyIndentedPlusFollowedBy 2
+                (ParserFast.map3
+                    (\commentsAfterArrow typeAnnotationResult commentsAfterType ->
+                        { comments =
+                            commentsAfterArrow
+                                |> Rope.prependTo typeAnnotationResult.comments
+                                |> Rope.prependTo commentsAfterType
+                        , syntax = typeAnnotationResult.syntax
+                        }
+                    )
                     Layout.maybeLayout
+                    (ParserFast.lazy (\() -> typeAnnotationNoFnIncludingTypedWithArguments))
+                    Layout.optimisticLayout
                 )
             )
-            (ParserFast.lazy (\() -> typeAnnotation))
-            { comments = Rope.empty, syntax = Nothing }
+        )
+        (\inType outType ->
+            { comments =
+                inType.comments
+                    |> Rope.prependTo outType.comments
+            , syntax =
+                Node.combine TypeAnnotation.FunctionTypeAnnotation inType.syntax outType.syntax
+            }
         )
 
 

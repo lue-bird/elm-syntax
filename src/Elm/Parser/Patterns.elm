@@ -12,11 +12,6 @@ import Rope
 
 pattern : Parser (WithComments (Node Pattern))
 pattern =
-    ParserFast.lazy (\() -> patternMaybeComposed)
-
-
-patternMaybeComposed : Parser (WithComments (Node Pattern))
-patternMaybeComposed =
     ParserFast.map2
         (\leftMaybeConsed maybeAsExtension ->
             { comments =
@@ -38,7 +33,7 @@ patternMaybeComposed =
                     , syntax = startPatternResult.syntax
                     }
                 )
-                composablePattern
+                (ParserFast.lazy (\() -> composablePattern))
                 Layout.maybeLayout
             )
             (ParserFast.symbolFollowedBy "::"
@@ -52,7 +47,7 @@ patternMaybeComposed =
                         }
                     )
                     Layout.maybeLayout
-                    composablePattern
+                    (ParserFast.lazy (\() -> composablePattern))
                     Layout.maybeLayout
                 )
             )

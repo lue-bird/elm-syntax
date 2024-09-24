@@ -951,6 +951,13 @@ all =
     in
     x"""
                     |> ParserWithCommentsUtil.expectInvalid Elm.Parser.Declarations.declaration
+        , test "fail if case branch result call argument not positively indented" <|
+            \() ->
+                """foo = 
+    case Nothing of
+        Nothing -> a
+  b"""
+                    |> ParserWithCommentsUtil.expectInvalid Elm.Parser.Declarations.declaration
         ]
 
 

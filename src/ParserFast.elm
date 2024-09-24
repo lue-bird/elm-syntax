@@ -1609,11 +1609,11 @@ loopWhileSucceedsOntoResultFromParser element (Parser parseInitialFolded) reduce
 loopUntil : Parser () -> Parser element -> folded -> (element -> folded -> folded) -> (folded -> res) -> Parser res
 loopUntil endParser element initialFolded reduce foldedToRes =
     Parser
-        (\s -> loopUntilHelp False endParser element initialFolded reduce foldedToRes s)
+        (\s -> loopUntilHelp endParser element initialFolded reduce foldedToRes s)
 
 
-loopUntilHelp : Bool -> Parser () -> Parser element -> folded -> (element -> folded -> folded) -> (folded -> res) -> State -> PStep res
-loopUntilHelp committedSoFar ((Parser parseEnd) as endParser) ((Parser parseElement) as element) soFar reduce foldedToRes s0 =
+loopUntilHelp : Parser () -> Parser element -> folded -> (element -> folded -> folded) -> (folded -> res) -> State -> PStep res
+loopUntilHelp ((Parser parseEnd) as endParser) ((Parser parseElement) as element) soFar reduce foldedToRes s0 =
     case parseEnd s0 of
         Good () s1 ->
             Good (foldedToRes soFar) s1
@@ -1625,7 +1625,7 @@ loopUntilHelp committedSoFar ((Parser parseEnd) as endParser) ((Parser parseElem
             else
                 case parseElement s0 of
                     Good elementResult s1 ->
-                        loopUntilHelp True
+                        loopUntilHelp
                             endParser
                             element
                             (soFar |> reduce elementResult)
@@ -1633,8 +1633,8 @@ loopUntilHelp committedSoFar ((Parser parseEnd) as endParser) ((Parser parseElem
                             foldedToRes
                             s1
 
-                    Bad elementCommitted x ->
-                        Bad (committedSoFar || elementCommitted) x
+                    Bad _ x ->
+                        Bad True (ExpectingOneOf x endX [])
 
 
 {-| Parse an integer base 10.

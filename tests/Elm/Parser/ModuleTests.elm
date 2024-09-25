@@ -498,7 +498,10 @@ fun2 n =
 
 expectAst : Module -> String -> Expect.Expectation
 expectAst =
-    ParserWithCommentsUtil.expectAst (ParserFast.map (\mod -> { comments = mod.comments, syntax = Node.value mod.syntax }) Parser.moduleDefinition)
+    ParserWithCommentsUtil.expectAst
+        (ParserFast.map (\mod -> ( mod |> Tuple.first, Node.value (mod |> Tuple.second) ))
+            Parser.moduleDefinition
+        )
 
 
 parseCore : String -> ParserFast.Parser a -> Result (List Parser.DeadEnd) a

@@ -14,24 +14,23 @@ pattern : Parser (WithComments (Node Pattern))
 pattern =
     ParserFast.map2
         (\leftMaybeConsed maybeAsExtension ->
-            { comments =
-                leftMaybeConsed.comments
-                    |> Rope.prependTo maybeAsExtension.comments
-            , syntax =
-                case maybeAsExtension.syntax of
-                    Nothing ->
-                        leftMaybeConsed.syntax
+            ( leftMaybeConsed
+                |> Tuple.first
+                |> Rope.prependTo (maybeAsExtension |> Tuple.first)
+            , case maybeAsExtension |> Tuple.second of
+                Nothing ->
+                    leftMaybeConsed |> Tuple.second
 
-                    Just anotherName ->
-                        Node.combine Pattern.AsPattern leftMaybeConsed.syntax anotherName
-            }
+                Just anotherName ->
+                    Node.combine Pattern.AsPattern (leftMaybeConsed |> Tuple.second) anotherName
+            )
         )
         (ParserFast.loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe
             (ParserFast.map2
                 (\startPatternResult commentsAfter ->
-                    { comments = startPatternResult.comments |> Rope.prependTo commentsAfter
-                    , syntax = startPatternResult.syntax
-                    }
+                    ( startPatternResult |> Tuple.first |> Rope.prependTo commentsAfter
+                    , startPatternResult |> Tuple.second
+                    )
                 )
                 (ParserFast.lazy (\() -> composablePattern))
                 Layout.maybeLayout
@@ -39,12 +38,11 @@ pattern =
             (ParserFast.symbolFollowedBy "::"
                 (ParserFast.map3
                     (\commentsAfterCons patternResult commentsAfterTailSubPattern ->
-                        { comments =
-                            commentsAfterCons
-                                |> Rope.prependTo patternResult.comments
-                                |> Rope.prependTo commentsAfterTailSubPattern
-                        , syntax = patternResult.syntax
-                        }
+                        ( commentsAfterCons
+                            |> Rope.prependTo (patternResult |> Tuple.first)
+                            |> Rope.prependTo commentsAfterTailSubPattern
+                        , patternResult |> Tuple.second
+                        )
                     )
                     Layout.maybeLayout
                     (ParserFast.lazy (\() -> composablePattern))
@@ -52,25 +50,24 @@ pattern =
                 )
             )
             (\consed afterCons ->
-                { comments = consed.comments |> Rope.prependTo afterCons.comments
-                , syntax =
-                    Node.combine Pattern.UnConsPattern consed.syntax afterCons.syntax
-                }
+                ( consed |> Tuple.first |> Rope.prependTo (afterCons |> Tuple.first)
+                , Node.combine Pattern.UnConsPattern (consed |> Tuple.second) (afterCons |> Tuple.second)
+                )
             )
         )
         (ParserFast.orSucceed
             (ParserFast.keywordFollowedBy "as"
                 (ParserFast.map2
                     (\commentsAfterAs name ->
-                        { comments = commentsAfterAs
-                        , syntax = Just name
-                        }
+                        ( commentsAfterAs
+                        , Just name
+                        )
                     )
                     Layout.maybeLayout
                     Tokens.functionNameNode
                 )
             )
-            { comments = Rope.empty, syntax = Nothing }
+            ( Rope.empty, Nothing )
         )
 
 
@@ -79,67 +76,62 @@ parensPattern =
     ParserFast.symbolFollowedBy "("
         (ParserFast.map2WithRange
             (\range commentsBeforeHead contentResult ->
-                { comments =
-                    commentsBeforeHead
-                        |> Rope.prependTo contentResult.comments
-                , syntax =
-                    Node { start = { row = range.start.row, column = range.start.column - 1 }, end = range.end }
-                        contentResult.syntax
-                }
+                ( commentsBeforeHead
+                    |> Rope.prependTo (contentResult |> Tuple.first)
+                , Node { start = { row = range.start.row, column = range.start.column - 1 }, end = range.end }
+                    (contentResult |> Tuple.second)
+                )
             )
             Layout.maybeLayout
             -- yes, (  ) is a valid pattern but not a valid type or expression
             (ParserFast.oneOf2
-                (ParserFast.symbol ")" { comments = Rope.empty, syntax = UnitPattern })
+                (ParserFast.symbol ")" ( Rope.empty, UnitPattern ))
                 (ParserFast.map3
                     (\headResult commentsAfterHead tailResult ->
-                        { comments =
-                            headResult.comments
-                                |> Rope.prependTo commentsAfterHead
-                                |> Rope.prependTo tailResult.comments
-                        , syntax =
-                            case tailResult.syntax of
-                                Nothing ->
-                                    ParenthesizedPattern headResult.syntax
+                        ( headResult
+                            |> Tuple.first
+                            |> Rope.prependTo commentsAfterHead
+                            |> Rope.prependTo (tailResult |> Tuple.first)
+                        , case tailResult |> Tuple.second of
+                            Nothing ->
+                                ParenthesizedPattern (headResult |> Tuple.second)
 
-                                Just secondAndMaybeThirdPart ->
-                                    case secondAndMaybeThirdPart.maybeThirdPart of
-                                        Nothing ->
-                                            TuplePattern [ headResult.syntax, secondAndMaybeThirdPart.secondPart ]
+                            Just secondAndMaybeThirdPart ->
+                                case secondAndMaybeThirdPart.maybeThirdPart of
+                                    Nothing ->
+                                        TuplePattern [ headResult |> Tuple.second, secondAndMaybeThirdPart.secondPart ]
 
-                                        Just thirdPart ->
-                                            TuplePattern [ headResult.syntax, secondAndMaybeThirdPart.secondPart, thirdPart ]
-                        }
+                                    Just thirdPart ->
+                                        TuplePattern [ headResult |> Tuple.second, secondAndMaybeThirdPart.secondPart, thirdPart ]
+                        )
                     )
                     pattern
                     Layout.maybeLayout
                     (ParserFast.oneOf2
-                        (ParserFast.symbol ")" { comments = Rope.empty, syntax = Nothing })
+                        (ParserFast.symbol ")" ( Rope.empty, Nothing ))
                         (ParserFast.symbolFollowedBy ","
                             (ParserFast.map4
                                 (\commentsBefore secondPart commentsAfter maybeThirdPart ->
-                                    { comments =
-                                        commentsBefore
-                                            |> Rope.prependTo secondPart.comments
-                                            |> Rope.prependTo commentsAfter
-                                            |> Rope.prependTo maybeThirdPart.comments
-                                    , syntax = Just { maybeThirdPart = maybeThirdPart.syntax, secondPart = secondPart.syntax }
-                                    }
+                                    ( commentsBefore
+                                        |> Rope.prependTo (secondPart |> Tuple.first)
+                                        |> Rope.prependTo commentsAfter
+                                        |> Rope.prependTo (maybeThirdPart |> Tuple.first)
+                                    , Just { maybeThirdPart = maybeThirdPart |> Tuple.second, secondPart = secondPart |> Tuple.second }
+                                    )
                                 )
                                 Layout.maybeLayout
                                 pattern
                                 Layout.maybeLayout
                                 (ParserFast.oneOf2
-                                    (ParserFast.symbol ")" { comments = Rope.empty, syntax = Nothing })
+                                    (ParserFast.symbol ")" ( Rope.empty, Nothing ))
                                     (ParserFast.symbolFollowedBy ","
                                         (ParserFast.map3
                                             (\commentsBefore thirdPart commentsAfter ->
-                                                { comments =
-                                                    commentsBefore
-                                                        |> Rope.prependTo thirdPart.comments
-                                                        |> Rope.prependTo commentsAfter
-                                                , syntax = Just thirdPart.syntax
-                                                }
+                                                ( commentsBefore
+                                                    |> Rope.prependTo (thirdPart |> Tuple.first)
+                                                    |> Rope.prependTo commentsAfter
+                                                , Just (thirdPart |> Tuple.second)
+                                                )
                                             )
                                             Layout.maybeLayout
                                             pattern
@@ -160,24 +152,24 @@ varPattern : Parser (WithComments (Node Pattern))
 varPattern =
     Tokens.functionNameMapWithRange
         (\range var ->
-            { comments = Rope.empty
-            , syntax = Node range (VarPattern var)
-            }
+            ( Rope.empty
+            , Node range (VarPattern var)
+            )
         )
 
 
 numberPart : Parser (WithComments (Node Pattern))
 numberPart =
     ParserFast.integerDecimalOrHexadecimalMapWithRange
-        (\range n -> { comments = Rope.empty, syntax = Node range (IntPattern n) })
-        (\range n -> { comments = Rope.empty, syntax = Node range (HexPattern n) })
+        (\range n -> ( Rope.empty, Node range (IntPattern n) ))
+        (\range n -> ( Rope.empty, Node range (HexPattern n) ))
 
 
 charPattern : Parser (WithComments (Node Pattern))
 charPattern =
     Tokens.characterLiteralMapWithRange
         (\range char ->
-            { comments = Rope.empty, syntax = Node range (CharPattern char) }
+            ( Rope.empty, Node range (CharPattern char) )
         )
 
 
@@ -187,14 +179,14 @@ listPattern =
         (\range commentsBeforeElements maybeElements ->
             case maybeElements of
                 Nothing ->
-                    { comments = commentsBeforeElements
-                    , syntax = Node range patternListEmpty
-                    }
+                    ( commentsBeforeElements
+                    , Node range patternListEmpty
+                    )
 
                 Just elements ->
-                    { comments = commentsBeforeElements |> Rope.prependTo elements.comments
-                    , syntax = Node range (ListPattern elements.syntax)
-                    }
+                    ( commentsBeforeElements |> Rope.prependTo (elements |> Tuple.first)
+                    , Node range (ListPattern (elements |> Tuple.second))
+                    )
         )
         (ParserFast.symbolFollowedBy "[" Layout.maybeLayout)
         (ParserFast.oneOf2
@@ -202,12 +194,12 @@ listPattern =
             (ParserFast.map3
                 (\head commentsAfterHead tail ->
                     Just
-                        { comments =
-                            head.comments
-                                |> Rope.prependTo tail.comments
-                                |> Rope.prependTo commentsAfterHead
-                        , syntax = head.syntax :: tail.syntax
-                        }
+                        ( head
+                            |> Tuple.first
+                            |> Rope.prependTo (tail |> Tuple.first)
+                            |> Rope.prependTo commentsAfterHead
+                        , (head |> Tuple.second) :: (tail |> Tuple.second)
+                        )
                 )
                 pattern
                 Layout.maybeLayout
@@ -258,9 +250,9 @@ allPattern : Parser (WithComments (Node Pattern))
 allPattern =
     ParserFast.symbolWithRange "_"
         (\range ->
-            { comments = Rope.empty
-            , syntax = Node range AllPattern
-            }
+            ( Rope.empty
+            , Node range AllPattern
+            )
         )
 
 
@@ -268,9 +260,9 @@ stringPattern : Parser (WithComments (Node Pattern))
 stringPattern =
     Tokens.singleOrTripleQuotedStringLiteralMapWithRange
         (\range string ->
-            { comments = Rope.empty
-            , syntax = Node range (StringPattern string)
-            }
+            ( Rope.empty
+            , Node range (StringPattern string)
+            )
         )
 
 
@@ -297,21 +289,20 @@ qualifiedPatternWithConsumeArgs =
             let
                 range : Range
                 range =
-                    case argsReverse.syntax of
+                    case argsReverse |> Tuple.second of
                         [] ->
                             nameRange
 
                         (Node lastArgRange _) :: _ ->
                             { start = nameRange.start, end = lastArgRange.end }
             in
-            { comments = afterStartName |> Rope.prependTo argsReverse.comments
-            , syntax =
-                Node range
-                    (NamedPattern
-                        name
-                        (List.reverse argsReverse.syntax)
-                    )
-            }
+            ( afterStartName |> Rope.prependTo (argsReverse |> Tuple.first)
+            , Node range
+                (NamedPattern
+                    name
+                    (List.reverse (argsReverse |> Tuple.second))
+                )
+            )
         )
         qualifiedNameRefNode
         Layout.optimisticLayout
@@ -319,9 +310,9 @@ qualifiedPatternWithConsumeArgs =
             (Layout.positivelyIndentedFollowedBy
                 (ParserFast.map2
                     (\arg commentsAfterArg ->
-                        { comments = arg.comments |> Rope.prependTo commentsAfterArg
-                        , syntax = arg.syntax
-                        }
+                        ( arg |> Tuple.first |> Rope.prependTo commentsAfterArg
+                        , arg |> Tuple.second
+                        )
                     )
                     patternNotDirectlyComposing
                     Layout.optimisticLayout
@@ -351,20 +342,19 @@ qualifiedPatternWithoutConsumeArgs : Parser (WithComments (Node Pattern))
 qualifiedPatternWithoutConsumeArgs =
     ParserFast.map2WithRange
         (\range firstName after ->
-            { comments = Rope.empty
-            , syntax =
-                Node range
-                    (NamedPattern
-                        (case after of
-                            Nothing ->
-                                { moduleName = [], name = firstName }
+            ( Rope.empty
+            , Node range
+                (NamedPattern
+                    (case after of
+                        Nothing ->
+                            { moduleName = [], name = firstName }
 
-                            Just ( qualificationAfter, unqualified ) ->
-                                { moduleName = firstName :: qualificationAfter, name = unqualified }
-                        )
-                        []
+                        Just ( qualificationAfter, unqualified ) ->
+                            { moduleName = firstName :: qualificationAfter, name = unqualified }
                     )
-            }
+                    []
+                )
+            )
         )
         Tokens.typeName
         maybeDotTypeNamesTuple
@@ -374,20 +364,18 @@ recordPattern : Parser (WithComments (Node Pattern))
 recordPattern =
     ParserFast.map2WithRange
         (\range commentsBeforeElements elements ->
-            { comments = commentsBeforeElements |> Rope.prependTo elements.comments
-            , syntax =
-                Node range (RecordPattern elements.syntax)
-            }
+            ( commentsBeforeElements |> Rope.prependTo (elements |> Tuple.first)
+            , Node range (RecordPattern (elements |> Tuple.second))
+            )
         )
         (ParserFast.symbolFollowedBy "{" Layout.maybeLayout)
         (ParserFast.oneOf2
             (ParserFast.map3
                 (\head commentsAfterHead tail ->
-                    { comments =
-                        commentsAfterHead
-                            |> Rope.prependTo tail.comments
-                    , syntax = head :: tail.syntax
-                    }
+                    ( commentsAfterHead
+                        |> Rope.prependTo (tail |> Tuple.first)
+                    , head :: (tail |> Tuple.second)
+                    )
                 )
                 Tokens.functionNameNode
                 Layout.maybeLayout
@@ -395,9 +383,9 @@ recordPattern =
                     (ParserFast.symbolFollowedBy ","
                         (ParserFast.map3
                             (\beforeName name afterName ->
-                                { comments = beforeName |> Rope.prependTo afterName
-                                , syntax = name
-                                }
+                                ( beforeName |> Rope.prependTo afterName
+                                , name
+                                )
                             )
                             Layout.maybeLayout
                             Tokens.functionNameNode
@@ -407,5 +395,5 @@ recordPattern =
                 )
                 |> ParserFast.followedBySymbol "}"
             )
-            (ParserFast.symbol "}" { comments = Rope.empty, syntax = [] })
+            (ParserFast.symbol "}" ( Rope.empty, [] ))
         )

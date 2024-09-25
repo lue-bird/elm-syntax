@@ -62,14 +62,14 @@ all =
                     |> Expect.err
         , test "module documentation" <|
             \() ->
-                parseWithState "{-|foo\nbar-}" (Parser.moduleDocumentation |> ParserFast.map (\c -> { comments = Just (Rope.one c), syntax = () }))
-                    |> Maybe.map .comments
+                parseWithState "{-|foo\nbar-}" (Parser.moduleDocumentation |> ParserFast.map (\c -> ( Just (Rope.one c), () )))
+                    |> Maybe.map Tuple.first
                     |> Expect.equal
                         (Just [ Node { start = { row = 1, column = 1 }, end = { row = 2, column = 6 } } "{-|foo\nbar-}" ])
         , test "module documentation can handle nested comments" <|
             \() ->
-                parseWithState "{-| {- hello -} -}" (Parser.moduleDocumentation |> ParserFast.map (\c -> { comments = Just (Rope.one c), syntax = () }))
-                    |> Maybe.map .comments
+                parseWithState "{-| {- hello -} -}" (Parser.moduleDocumentation |> ParserFast.map (\c -> ( Just (Rope.one c), () )))
+                    |> Maybe.map Tuple.first
                     |> Expect.equal
                         (Just [ Node { start = { row = 1, column = 1 }, end = { row = 1, column = 19 } } "{-| {- hello -} -}" ])
         ]

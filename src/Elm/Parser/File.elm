@@ -17,14 +17,15 @@ file : ParserFast.Parser File
 file =
     ParserFast.map4
         (\moduleDefinition moduleComments imports declarations ->
-            { moduleDefinition = moduleDefinition.syntax
-            , imports = imports.syntax
-            , declarations = declarations.syntax
+            { moduleDefinition = moduleDefinition |> Tuple.second
+            , imports = imports |> Tuple.second
+            , declarations = declarations |> Tuple.second
             , comments =
-                moduleDefinition.comments
+                moduleDefinition
+                    |> Tuple.first
                     |> Rope.prependTo moduleComments
-                    |> Rope.prependTo imports.comments
-                    |> Rope.prependTo declarations.comments
+                    |> Rope.prependTo (imports |> Tuple.first)
+                    |> Rope.prependTo (declarations |> Tuple.first)
                     |> Rope.toList
             }
         )
@@ -51,9 +52,9 @@ fileDeclarations =
         (Layout.moduleLevelIndentationFollowedBy
             (ParserFast.map2
                 (\declarationParsed commentsAfter ->
-                    { comments = declarationParsed.comments |> Rope.prependTo commentsAfter
-                    , syntax = declarationParsed.syntax
-                    }
+                    ( declarationParsed |> Tuple.first |> Rope.prependTo commentsAfter
+                    , declarationParsed |> Tuple.second
+                    )
                 )
                 declaration
                 Layout.optimisticLayout

@@ -131,7 +131,7 @@ all =
 expectAst : Exposing -> String -> Expect.Expectation
 expectAst =
     ParserWithCommentsUtil.expectAst
-        (ParserFast.map (\expose -> { comments = expose.comments, syntax = Node.value expose.syntax })
+        (ParserFast.map (\( exposeComments, exposeSyntax ) -> ( exposeComments, Node.value exposeSyntax ))
             exposeDefinition
         )
 
@@ -139,7 +139,7 @@ expectAst =
 expectAstWithComments : { ast : Exposing, comments : List (Node String) } -> String -> Expect.Expectation
 expectAstWithComments =
     ParserWithCommentsUtil.expectAstWithComments
-        (ParserFast.map (\expose -> { comments = expose.comments, syntax = Node.value expose.syntax })
+        (ParserFast.map (\( exposeComments, exposeSyntax ) -> ( exposeComments, Node.value exposeSyntax ))
             exposeDefinition
         )
 

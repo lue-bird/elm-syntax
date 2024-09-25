@@ -144,9 +144,9 @@ layoutStrictFollowedByWithComments : Parser (WithComments syntax) -> Parser (Wit
 layoutStrictFollowedByWithComments nextParser =
     ParserFast.map2
         (\commentsBefore after ->
-            { comments = commentsBefore |> Rope.prependTo after.comments
-            , syntax = after.syntax
-            }
+            ( commentsBefore |> Rope.prependTo (after |> Tuple.first)
+            , after |> Tuple.second
+            )
         )
         optimisticLayout
         (onTopIndentationFollowedBy nextParser)
@@ -156,7 +156,7 @@ layoutStrictFollowedBy : Parser syntax -> Parser (WithComments syntax)
 layoutStrictFollowedBy nextParser =
     ParserFast.map2
         (\commentsBefore after ->
-            { comments = commentsBefore, syntax = after }
+            ( commentsBefore, after )
         )
         optimisticLayout
         (onTopIndentationFollowedBy nextParser)
@@ -213,12 +213,11 @@ maybeAroundBothSides : Parser (WithComments b) -> Parser (WithComments b)
 maybeAroundBothSides x =
     ParserFast.map3
         (\before v after ->
-            { comments =
-                before
-                    |> Rope.prependTo v.comments
-                    |> Rope.prependTo after
-            , syntax = v.syntax
-            }
+            ( before
+                |> Rope.prependTo (v |> Tuple.first)
+                |> Rope.prependTo after
+            , v |> Tuple.second
+            )
         )
         maybeLayout
         x

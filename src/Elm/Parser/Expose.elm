@@ -12,13 +12,12 @@ import Rope
 exposeDefinition : Parser (WithComments (Node Exposing))
 exposeDefinition =
     ParserFast.map3WithRange
-        (\range commentsAfterExposing commentsBefore exposingListInnerResult ->
-            { comments =
-                commentsAfterExposing
-                    |> Rope.prependTo commentsBefore
-                    |> Rope.prependTo exposingListInnerResult.comments
-            , syntax = Node range exposingListInnerResult.syntax
-            }
+        (\range commentsAfterExposing commentsBefore ( exposingListInnerComments, exposingListInnerSyntax ) ->
+            ( commentsAfterExposing
+                |> Rope.prependTo commentsBefore
+                |> Rope.prependTo exposingListInnerComments
+            , Node range exposingListInnerSyntax
+            )
         )
         (ParserFast.symbolFollowedBy "exposing" Layout.maybeLayout)
         (ParserFast.symbolFollowedBy "(" Layout.optimisticLayout)
@@ -31,17 +30,12 @@ exposingListInner : Parser (WithComments Exposing)
 exposingListInner =
     ParserFast.oneOf2
         (ParserFast.map3
-            (\headElement commentsAfterHeadElement tailElements ->
-                { comments =
-                    headElement.comments
-                        |> Rope.prependTo commentsAfterHeadElement
-                        |> Rope.prependTo tailElements.comments
-                , syntax =
-                    Explicit
-                        (headElement.syntax
-                            :: tailElements.syntax
-                        )
-                }
+            (\( headElementComments, headElement ) commentsAfterHeadElement ( tailElementsComments, tailElements ) ->
+                ( headElementComments
+                    |> Rope.prependTo commentsAfterHeadElement
+                    |> Rope.prependTo tailElementsComments
+                , Explicit (headElement :: tailElements)
+                )
             )
             exposable
             Layout.maybeLayout
@@ -53,9 +47,9 @@ exposingListInner =
         )
         (ParserFast.mapWithRange
             (\range commentsAfterDotDot ->
-                { comments = commentsAfterDotDot
-                , syntax = All range
-                }
+                ( commentsAfterDotDot
+                , All range
+                )
             )
             (ParserFast.symbolFollowedBy ".." Layout.maybeLayout)
         )
@@ -73,9 +67,9 @@ infixExpose : ParserFast.Parser (WithComments (Node TopLevelExpose))
 infixExpose =
     ParserFast.map2WithRange
         (\range infixName () ->
-            { comments = Rope.empty
-            , syntax = Node range (InfixExpose infixName)
-            }
+            ( Rope.empty
+            , Node range (InfixExpose infixName)
+            )
         )
         (ParserFast.symbolFollowedBy "("
             (ParserFast.ifFollowedByWhileWithoutLinebreak
@@ -89,32 +83,31 @@ infixExpose =
 typeExpose : Parser (WithComments (Node TopLevelExpose))
 typeExpose =
     ParserFast.map3
-        (\(Node typeNameRange typeName) commentsBeforeMaybeOpen maybeOpen ->
-            { comments = commentsBeforeMaybeOpen |> Rope.prependTo maybeOpen.comments
-            , syntax =
-                case maybeOpen.syntax of
-                    Nothing ->
-                        Node typeNameRange (TypeOrAliasExpose typeName)
+        (\(Node typeNameRange typeName) commentsBeforeMaybeOpen ( maybeOpenComments, maybeOpen ) ->
+            ( commentsBeforeMaybeOpen |> Rope.prependTo maybeOpenComments
+            , case maybeOpen of
+                Nothing ->
+                    Node typeNameRange (TypeOrAliasExpose typeName)
 
-                    Just openRange ->
-                        Node
-                            { start = typeNameRange.start
-                            , end = openRange.end
-                            }
-                            (TypeExpose { name = typeName, open = maybeOpen.syntax })
-            }
+                Just openRange ->
+                    Node
+                        { start = typeNameRange.start
+                        , end = openRange.end
+                        }
+                        (TypeExpose { name = typeName, open = maybeOpen })
+            )
         )
         Tokens.typeNameNode
         Layout.optimisticLayout
         (ParserFast.map2WithRangeOrSucceed
             (\range left right ->
-                { comments = left |> Rope.prependTo right, syntax = Just range }
+                ( left |> Rope.prependTo right, Just range )
             )
             (ParserFast.symbolFollowedBy "(" Layout.maybeLayout)
             (ParserFast.symbolFollowedBy ".." Layout.maybeLayout
                 |> ParserFast.followedBySymbol ")"
             )
-            { comments = Rope.empty, syntax = Nothing }
+            ( Rope.empty, Nothing )
         )
 
 
@@ -122,8 +115,7 @@ functionExpose : Parser (WithComments (Node TopLevelExpose))
 functionExpose =
     Tokens.functionNameMapWithRange
         (\range name ->
-            { comments = Rope.empty
-            , syntax =
-                Node range (FunctionExpose name)
-            }
+            ( Rope.empty
+            , Node range (FunctionExpose name)
+            )
         )

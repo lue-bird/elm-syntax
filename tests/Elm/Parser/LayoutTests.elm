@@ -99,5 +99,5 @@ all =
 parse : String -> ParserFast.Parser Comments -> Maybe ()
 parse source parser =
     parseWithState source
-        (parser |> ParserFast.map (\c -> { comments = c, syntax = () }))
-        |> Maybe.map .syntax
+        (parser |> ParserFast.map (\c -> ( c, () )))
+        |> Maybe.map Tuple.second

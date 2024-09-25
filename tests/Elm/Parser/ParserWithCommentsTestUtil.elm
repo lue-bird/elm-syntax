@@ -8,23 +8,23 @@ import ParserWithComments exposing (WithComments)
 import Rope
 
 
-parseWithState : String -> ParserFast.Parser (WithComments a) -> Maybe { comments : List (Node String), syntax : a }
+parseWithState : String -> ParserFast.Parser (WithComments a) -> Maybe ( List (Node String), a )
 parseWithState s p =
     case ParserFast.run p s of
         Err _ ->
             Nothing
 
-        Ok commentsAndSyntax ->
-            { comments = commentsAndSyntax.comments |> Rope.toList
-            , syntax = commentsAndSyntax.syntax
-            }
+        Ok ( comments, syntax ) ->
+            ( comments |> Rope.toList
+            , syntax
+            )
                 |> Just
 
 
 parse : String -> ParserFast.Parser (WithComments a) -> Maybe a
 parse s p =
     parseWithState s p
-        |> Maybe.map .syntax
+        |> Maybe.map Tuple.second
 
 
 parseWithFailure : String -> ParserFast.Parser (WithComments a) -> Result (List Parser.DeadEnd) a
@@ -33,8 +33,8 @@ parseWithFailure s p =
         Err deadEnds ->
             Err deadEnds
 
-        Ok commentsAndSyntax ->
-            commentsAndSyntax.syntax |> Ok
+        Ok ( _, syntax ) ->
+            syntax |> Ok
 
 
 expectAstWithIndent1 : ParserFast.Parser (WithComments a) -> a -> String -> Expect.Expectation
@@ -44,11 +44,11 @@ expectAstWithIndent1 parser =
             Err error ->
                 Expect.fail ("Expected the source to be parsed correctly:\n" ++ Debug.toString error)
 
-            Ok actual ->
+            Ok ( comments, syntax ) ->
                 Expect.all
-                    [ \() -> actual.syntax |> Expect.equal expected
+                    [ \() -> syntax |> Expect.equal expected
                     , \() ->
-                        actual.comments
+                        comments
                             |> Rope.toList
                             |> Expect.equalLists []
                             |> Expect.onFail "This parser should not produce any comments. If this is expected, then you should use expectAstWithComments instead."
@@ -63,11 +63,11 @@ expectAst parser =
             Err deadEnds ->
                 Expect.fail ("Expected the source to be parsed correctly:\n[ " ++ (List.map deadEndToString deadEnds |> String.join "\n, ") ++ "\n]")
 
-            Ok actual ->
+            Ok ( comments, syntax ) ->
                 Expect.all
-                    [ \() -> actual.syntax |> Expect.equal expected
+                    [ \() -> syntax |> Expect.equal expected
                     , \() ->
-                        actual.comments
+                        comments
                             |> Rope.toList
                             |> Expect.equalLists []
                             |> Expect.onFail "This parser should not produce any comments. If this is expected, then you should use expectAstWithComments instead."
@@ -87,10 +87,10 @@ expectAstWithComments parser =
             Err error ->
                 Expect.fail ("Expected the source to be parsed correctly:\n" ++ Debug.toString error)
 
-            Ok actual ->
+            Ok ( comments, syntax ) ->
                 Expect.all
-                    [ \() -> actual.syntax |> Expect.equal expected.ast
-                    , \() -> actual.comments |> Rope.toList |> Expect.equal expected.comments
+                    [ \() -> syntax |> Expect.equal expected.ast
+                    , \() -> comments |> Rope.toList |> Expect.equal expected.comments
                     ]
                     ()
 

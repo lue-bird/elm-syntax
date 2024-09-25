@@ -23,7 +23,7 @@ importDefinition =
                         Just moduleAliasValue ->
                             let
                                 (Node range _) =
-                                    moduleAliasValue.syntax
+                                    moduleAliasValue |> Tuple.second
                             in
                             range
 
@@ -32,44 +32,42 @@ importDefinition =
                                 Just exposingListValue ->
                                     let
                                         (Node range _) =
-                                            exposingListValue.syntax
+                                            exposingListValue |> Tuple.second
                                     in
                                     range
 
                                 Nothing ->
                                     modRange
             in
-            { comments =
-                let
-                    commentsBeforeAlias : Comments
-                    commentsBeforeAlias =
-                        commentsAfterImport
-                            |> Rope.prependTo commentsAfterModuleName
+            ( let
+                commentsBeforeAlias : Comments
+                commentsBeforeAlias =
+                    commentsAfterImport
+                        |> Rope.prependTo commentsAfterModuleName
 
-                    commentsBeforeExposingList : Comments
-                    commentsBeforeExposingList =
-                        case maybeModuleAlias of
-                            Nothing ->
-                                commentsBeforeAlias
+                commentsBeforeExposingList : Comments
+                commentsBeforeExposingList =
+                    case maybeModuleAlias of
+                        Nothing ->
+                            commentsBeforeAlias
 
-                            Just moduleAliasValue ->
-                                commentsBeforeAlias |> Rope.prependTo moduleAliasValue.comments
-                in
-                (case maybeExposingList of
-                    Nothing ->
-                        commentsBeforeExposingList
+                        Just moduleAliasValue ->
+                            commentsBeforeAlias |> Rope.prependTo (moduleAliasValue |> Tuple.first)
+              in
+              (case maybeExposingList of
+                Nothing ->
+                    commentsBeforeExposingList
 
-                    Just exposingListValue ->
-                        commentsBeforeExposingList |> Rope.prependTo exposingListValue.comments
-                )
-                    |> Rope.prependTo commentsAfterEverything
-            , syntax =
-                Node { start = start, end = endRange.end }
-                    { moduleName = mod
-                    , moduleAlias = maybeModuleAlias |> Maybe.map .syntax
-                    , exposingList = maybeExposingList |> Maybe.map .syntax
-                    }
-            }
+                Just exposingListValue ->
+                    commentsBeforeExposingList |> Rope.prependTo (exposingListValue |> Tuple.first)
+              )
+                |> Rope.prependTo commentsAfterEverything
+            , Node { start = start, end = endRange.end }
+                { moduleName = mod
+                , moduleAlias = maybeModuleAlias |> Maybe.map Tuple.second
+                , exposingList = maybeExposingList |> Maybe.map Tuple.second
+                }
+            )
         )
         (ParserFast.keywordFollowedBy "import" Layout.maybeLayout)
         moduleName
@@ -77,9 +75,9 @@ importDefinition =
         (ParserFast.map3OrSucceed
             (\commentsBefore moduleAliasNode commentsAfter ->
                 Just
-                    { comments = commentsBefore |> Rope.prependTo commentsAfter
-                    , syntax = moduleAliasNode
-                    }
+                    ( commentsBefore |> Rope.prependTo commentsAfter
+                    , moduleAliasNode
+                    )
             )
             (ParserFast.keywordFollowedBy "as" Layout.maybeLayout)
             (Tokens.typeNameMapWithRange

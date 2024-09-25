@@ -12,7 +12,7 @@ import Rope exposing (Rope)
 
 
 type alias WithComments res =
-    { comments : Comments, syntax : res }
+    ( Comments, res )
 
 
 type alias Comments =
@@ -25,15 +25,15 @@ until end element =
         end
         element
         ( Rope.empty, [] )
-        (\pResult ( commentsSoFar, itemsSoFar ) ->
-            ( commentsSoFar |> Rope.prependTo pResult.comments
-            , pResult.syntax :: itemsSoFar
+        (\( pResultComments, pResultSyntax ) ( commentsSoFar, itemsSoFar ) ->
+            ( commentsSoFar |> Rope.prependTo pResultComments
+            , pResultSyntax :: itemsSoFar
             )
         )
         (\( commentsSoFar, itemsSoFar ) ->
-            { comments = commentsSoFar
-            , syntax = List.reverse itemsSoFar
-            }
+            ( commentsSoFar
+            , List.reverse itemsSoFar
+            )
         )
 
 
@@ -41,15 +41,15 @@ many : Parser (WithComments a) -> Parser (WithComments (List a))
 many p =
     ParserFast.loopWhileSucceeds p
         ( Rope.empty, [] )
-        (\pResult ( commentsSoFar, itemsSoFar ) ->
-            ( commentsSoFar |> Rope.prependTo pResult.comments
-            , pResult.syntax :: itemsSoFar
+        (\( pResultComments, pResultSyntax ) ( commentsSoFar, itemsSoFar ) ->
+            ( commentsSoFar |> Rope.prependTo pResultComments
+            , pResultSyntax :: itemsSoFar
             )
         )
         (\( commentsSoFar, itemsSoFar ) ->
-            { comments = commentsSoFar
-            , syntax = List.reverse itemsSoFar
-            }
+            ( commentsSoFar
+            , List.reverse itemsSoFar
+            )
         )
 
 
@@ -63,13 +63,9 @@ manyWithoutReverse : Parser (WithComments a) -> Parser (WithComments (List a))
 manyWithoutReverse p =
     ParserFast.loopWhileSucceeds p
         ( Rope.empty, [] )
-        (\pResult ( commentsSoFar, itemsSoFar ) ->
-            ( commentsSoFar |> Rope.prependTo pResult.comments
-            , pResult.syntax :: itemsSoFar
+        (\( pResultComments, pResultSyntax ) ( commentsSoFar, itemsSoFar ) ->
+            ( commentsSoFar |> Rope.prependTo pResultComments
+            , pResultSyntax :: itemsSoFar
             )
         )
-        (\( commentsSoFar, itemsSoFar ) ->
-            { comments = commentsSoFar
-            , syntax = itemsSoFar
-            }
-        )
+        Basics.identity

@@ -24,9 +24,9 @@ effectWhereClause : Parser (WithComments ( String, Node String ))
 effectWhereClause =
     ParserFast.map4
         (\fnName commentsAfterFnName commentsAfterEqual typeName_ ->
-            { comments = commentsAfterFnName |> Rope.prependTo commentsAfterEqual
-            , syntax = ( fnName, typeName_ )
-            }
+            ( commentsAfterFnName |> Rope.prependTo commentsAfterEqual
+            , ( fnName, typeName_ )
+            )
         )
         Tokens.functionName
         Layout.maybeLayout
@@ -42,24 +42,22 @@ whereBlock =
                 let
                     pairs : List ( String, Node String )
                     pairs =
-                        head.syntax :: tail.syntax
+                        (head |> Tuple.second) :: (tail |> Tuple.second)
                 in
-                { comments =
-                    commentsBeforeHead
-                        |> Rope.prependTo head.comments
-                        |> Rope.prependTo commentsAfterHead
-                        |> Rope.prependTo tail.comments
-                , syntax =
-                    { command =
+                ( commentsBeforeHead
+                    |> Rope.prependTo (head |> Tuple.first)
+                    |> Rope.prependTo commentsAfterHead
+                    |> Rope.prependTo (tail |> Tuple.first)
+                , { command =
                         pairs
                             |> List.Extra.find (\( fnName, _ ) -> fnName == "command")
                             |> Maybe.map Tuple.second
-                    , subscription =
+                  , subscription =
                         pairs
                             |> List.Extra.find (\( fnName, _ ) -> fnName == "subscription")
                             |> Maybe.map Tuple.second
-                    }
-                }
+                  }
+                )
             )
             Layout.maybeLayout
             effectWhereClause
@@ -75,9 +73,9 @@ effectWhereClauses : Parser (WithComments { command : Maybe (Node String), subsc
 effectWhereClauses =
     ParserFast.map2
         (\commentsBefore whereResult ->
-            { comments = commentsBefore |> Rope.prependTo whereResult.comments
-            , syntax = whereResult.syntax
-            }
+            ( commentsBefore |> Rope.prependTo (whereResult |> Tuple.first)
+            , whereResult |> Tuple.second
+            )
         )
         (ParserFast.keywordFollowedBy "where" Layout.maybeLayout)
         whereBlock
@@ -87,23 +85,21 @@ effectModuleDefinition : Parser (WithComments (Node Module))
 effectModuleDefinition =
     ParserFast.map7WithRange
         (\range commentsAfterEffect commentsAfterModule name commentsAfterName whereClauses commentsAfterWhereClauses exp ->
-            { comments =
-                commentsAfterEffect
-                    |> Rope.prependTo commentsAfterModule
-                    |> Rope.prependTo commentsAfterName
-                    |> Rope.prependTo whereClauses.comments
-                    |> Rope.prependTo commentsAfterWhereClauses
-                    |> Rope.prependTo exp.comments
-            , syntax =
-                Node range
-                    (EffectModule
-                        { moduleName = name
-                        , exposingList = exp.syntax
-                        , command = whereClauses.syntax.command
-                        , subscription = whereClauses.syntax.subscription
-                        }
-                    )
-            }
+            ( commentsAfterEffect
+                |> Rope.prependTo commentsAfterModule
+                |> Rope.prependTo commentsAfterName
+                |> Rope.prependTo (whereClauses |> Tuple.first)
+                |> Rope.prependTo commentsAfterWhereClauses
+                |> Rope.prependTo (exp |> Tuple.first)
+            , Node range
+                (EffectModule
+                    { moduleName = name
+                    , exposingList = exp |> Tuple.second
+                    , command = (whereClauses |> Tuple.second).command
+                    , subscription = (whereClauses |> Tuple.second).subscription
+                    }
+                )
+            )
         )
         (ParserFast.keywordFollowedBy "effect" Layout.maybeLayout)
         (ParserFast.keywordFollowedBy "module" Layout.maybeLayout)
@@ -118,18 +114,16 @@ normalModuleDefinition : Parser (WithComments (Node Module))
 normalModuleDefinition =
     ParserFast.map4WithRange
         (\range commentsAfterModule moduleName commentsAfterModuleName exposingList ->
-            { comments =
-                commentsAfterModule
-                    |> Rope.prependTo commentsAfterModuleName
-                    |> Rope.prependTo exposingList.comments
-            , syntax =
-                Node range
-                    (NormalModule
-                        { moduleName = moduleName
-                        , exposingList = exposingList.syntax
-                        }
-                    )
-            }
+            ( commentsAfterModule
+                |> Rope.prependTo commentsAfterModuleName
+                |> Rope.prependTo (exposingList |> Tuple.first)
+            , Node range
+                (NormalModule
+                    { moduleName = moduleName
+                    , exposingList = exposingList |> Tuple.second
+                    }
+                )
+            )
         )
         (ParserFast.keywordFollowedBy "module" Layout.maybeLayout)
         moduleName
@@ -141,15 +135,13 @@ portModuleDefinition : Parser (WithComments (Node Module))
 portModuleDefinition =
     ParserFast.map5WithRange
         (\range commentsAfterPort commentsAfterModule moduleName commentsAfterModuleName exposingList ->
-            { comments =
-                commentsAfterPort
-                    |> Rope.prependTo commentsAfterModule
-                    |> Rope.prependTo commentsAfterModuleName
-                    |> Rope.prependTo exposingList.comments
-            , syntax =
-                Node range
-                    (PortModule { moduleName = moduleName, exposingList = exposingList.syntax })
-            }
+            ( commentsAfterPort
+                |> Rope.prependTo commentsAfterModule
+                |> Rope.prependTo commentsAfterModuleName
+                |> Rope.prependTo (exposingList |> Tuple.first)
+            , Node range
+                (PortModule { moduleName = moduleName, exposingList = exposingList |> Tuple.second })
+            )
         )
         (ParserFast.keywordFollowedBy "port" Layout.maybeLayout)
         (ParserFast.keywordFollowedBy "module" Layout.maybeLayout)

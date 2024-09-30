@@ -1271,6 +1271,147 @@ infixOperatorAndThen toResult afterCommitting =
 
 subExpressionMaybeAppliedOptimisticLayout : Parser (WithComments (Node Expression))
 subExpressionMaybeAppliedOptimisticLayout =
+    -- functionally, a simple oneOf would be correct as well.
+    -- However, since this parser is called _a lot_,
+    --   we squeeze out a bit more speed by de-duplicating slices etc
+    ParserFast.offsetSourceAndThen
+        (\offset source ->
+            case String.slice offset (offset + 1) source of
+                "\"" ->
+                    literalExpressionOptimisticLayout
+
+                "(" ->
+                    tupledExpressionIfNecessaryFollowedByRecordAccessMaybeApplied
+
+                "[" ->
+                    listOrGlslExpressionOptimisticLayout
+
+                "{" ->
+                    recordExpressionFollowedByRecordAccessMaybeApplied
+
+                "c" ->
+                    caseOrUnqualifiedReferenceExpressionMaybeApplied
+
+                "\\" ->
+                    lambdaExpressionOptimisticLayout
+
+                "l" ->
+                    letOrUnqualifiedReferenceExpressionMaybeApplied
+
+                "i" ->
+                    ifOrUnqualifiedReferenceExpressionMaybeApplied
+
+                "." ->
+                    recordAccessFunctionExpressionMaybeApplied
+
+                "-" ->
+                    negationOperationOptimisticLayout
+
+                "'" ->
+                    charLiteralExpressionOptimisticLayout
+
+                _ ->
+                    referenceOrNumberExpressionMaybeApplied
+        )
+
+
+lambdaExpressionOptimisticLayout : Parser (WithComments (Node Expression))
+lambdaExpressionOptimisticLayout =
+    lambdaExpression |> followedByOptimisticLayout
+
+
+negationOperationOptimisticLayout : Parser (WithComments (Node Expression))
+negationOperationOptimisticLayout =
+    negationOperation |> followedByOptimisticLayout
+
+
+charLiteralExpressionOptimisticLayout : Parser (WithComments (Node Expression))
+charLiteralExpressionOptimisticLayout =
+    charLiteralExpression |> followedByOptimisticLayout
+
+
+literalExpressionOptimisticLayout : Parser (WithComments (Node Expression))
+literalExpressionOptimisticLayout =
+    literalExpression |> followedByOptimisticLayout
+
+
+listOrGlslExpressionOptimisticLayout : Parser (WithComments (Node Expression))
+listOrGlslExpressionOptimisticLayout =
+    listOrGlslExpression |> followedByOptimisticLayout
+
+
+followedByOptimisticLayout : Parser (WithComments a) -> Parser (WithComments a)
+followedByOptimisticLayout parser =
+    ParserFast.map2
+        (\result commentsAfter ->
+            { comments = result.comments |> Rope.prependTo commentsAfter
+            , syntax = result.syntax
+            }
+        )
+        parser
+        Layout.optimisticLayout
+
+
+recordAccessFunctionExpressionMaybeApplied : Parser (WithComments (Node Expression))
+recordAccessFunctionExpressionMaybeApplied =
+    recordAccessFunctionExpression |> followedByMultiArgumentApplication
+
+
+recordExpressionFollowedByRecordAccessMaybeApplied : Parser (WithComments (Node Expression))
+recordExpressionFollowedByRecordAccessMaybeApplied =
+    -- TODO don't check for applied if record access
+    recordExpressionFollowedByRecordAccess
+        |> followedByMultiArgumentApplication
+
+
+tupledExpressionIfNecessaryFollowedByRecordAccessMaybeApplied : Parser (WithComments (Node Expression))
+tupledExpressionIfNecessaryFollowedByRecordAccessMaybeApplied =
+    -- TODO don't check for applied if not parenthesized
+    tupledExpressionIfNecessaryFollowedByRecordAccess
+        |> followedByMultiArgumentApplication
+
+
+caseOrUnqualifiedReferenceExpressionMaybeApplied : Parser (WithComments (Node Expression))
+caseOrUnqualifiedReferenceExpressionMaybeApplied =
+    ParserFast.oneOf2
+        (caseExpression |> followedByOptimisticLayout)
+        (unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
+            |> followedByMultiArgumentApplication
+        )
+
+
+letOrUnqualifiedReferenceExpressionMaybeApplied : Parser (WithComments (Node Expression))
+letOrUnqualifiedReferenceExpressionMaybeApplied =
+    ParserFast.oneOf2
+        (letExpression |> followedByOptimisticLayout)
+        (unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
+            |> followedByMultiArgumentApplication
+        )
+
+
+ifOrUnqualifiedReferenceExpressionMaybeApplied : Parser (WithComments (Node Expression))
+ifOrUnqualifiedReferenceExpressionMaybeApplied =
+    ParserFast.oneOf2
+        (ifBlockExpression |> followedByOptimisticLayout)
+        (unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
+            |> followedByMultiArgumentApplication
+        )
+
+
+referenceOrNumberExpressionMaybeApplied : Parser (WithComments (Node Expression))
+referenceOrNumberExpressionMaybeApplied =
+    ParserFast.oneOf3
+        (qualifiedOrVariantOrRecordConstructorReferenceExpressionFollowedByRecordAccess
+            |> followedByMultiArgumentApplication
+        )
+        (unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
+            |> followedByMultiArgumentApplication
+        )
+        (numberExpression |> followedByOptimisticLayout)
+
+
+followedByMultiArgumentApplication : Parser (WithComments (Node Expression)) -> Parser (WithComments (Node Expression))
+followedByMultiArgumentApplication appliedExpressionParser =
     ParserFast.map3
         (\leftExpressionResult commentsBeforeExtension maybeArgsReverse ->
             { comments =
@@ -1293,7 +1434,7 @@ subExpressionMaybeAppliedOptimisticLayout =
                             )
             }
         )
-        subExpression
+        appliedExpressionParser
         Layout.optimisticLayout
         (ParserWithComments.manyWithoutReverse
             (Layout.positivelyIndentedFollowedBy

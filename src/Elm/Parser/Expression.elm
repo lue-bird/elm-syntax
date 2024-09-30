@@ -231,7 +231,10 @@ precedence9ComposeL =
 
 expression : Parser (WithComments (Node Expression))
 expression =
-    extendedSubExpressionOptimisticLayout Ok .extensionRight
+    extendedSubExpressionOptimisticLayout
+        { rightPrecedenceAbove = 0
+        , rightPrecedenceDoesNotAssociate = \_ -> False
+        }
 
 
 glslExpressionAfterOpeningSquareBracket : Parser (WithComments (Node Expression))
@@ -1164,13 +1167,12 @@ type Tupled
 
 
 extendedSubExpressionOptimisticLayout :
-    (InfixOperatorInfo -> Result String intermediate)
-    -> (intermediate -> Parser (WithComments ExtensionRight))
+    { info_ | rightPrecedenceAbove : Int, rightPrecedenceDoesNotAssociate : Int -> Bool }
     -> Parser (WithComments (Node Expression))
-extendedSubExpressionOptimisticLayout toResult afterCommitting =
+extendedSubExpressionOptimisticLayout info =
     ParserFast.loopWhileSucceedsOntoResultFromParser
         (Layout.positivelyIndentedFollowedBy
-            (infixOperatorAndThen toResult afterCommitting)
+            (infixOperatorAndThen info)
         )
         subExpressionMaybeAppliedOptimisticLayout
         (\extensionRightResult leftNodeWithComments ->
@@ -1185,83 +1187,231 @@ extendedSubExpressionOptimisticLayout toResult afterCommitting =
         Basics.identity
 
 
-infixOperatorAndThen : (InfixOperatorInfo -> Result String intermediate) -> (intermediate -> Parser res) -> Parser res
-infixOperatorAndThen toResult afterCommitting =
+problemCannotMixNonAssociativeInfixOperators : Parser a
+problemCannotMixNonAssociativeInfixOperators =
+    ParserFast.problem "cannot mix non-associative infix operators without parenthesis"
+
+
+temporaryErrPrecedenceTooHigh : Result String a
+temporaryErrPrecedenceTooHigh =
+    Err "infix operator precedence too high"
+
+
+extensionRightParser :
+    { direction : Infix.InfixDirection
+    , rightPrecedenceAbove : Int
+    , rightPrecedenceDoesNotAssociate : Int -> Bool
+    , symbol : String
+    }
+    -> Parser (WithComments ExtensionRight)
+extensionRightParser extensionRightInfo =
+    ParserFast.map2
+        (\commentsBefore right ->
+            { comments = commentsBefore |> Rope.prependTo right.comments
+            , syntax =
+                ExtendRightByOperation
+                    { symbol = extensionRightInfo.symbol
+                    , direction = extensionRightInfo.direction
+                    , expression = right.syntax
+                    }
+            }
+        )
+        Layout.maybeLayout
+        (ParserFast.lazy
+            (\() -> extendedSubExpressionOptimisticLayout extensionRightInfo)
+        )
+
+
+infixOperatorAndThen : { info_ | rightPrecedenceAbove : Int, rightPrecedenceDoesNotAssociate : Int -> Bool } -> Parser (WithComments ExtensionRight)
+infixOperatorAndThen info =
+    let
+        toResult : InfixOperatorInfo -> Result String InfixOperatorInfo
+        toResult rightInfo =
+            if rightInfo.leftPrecedence > info.rightPrecedenceAbove then
+                Ok rightInfo
+
+            else
+                temporaryErrPrecedenceTooHigh
+
+        afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
+        afterCommitting rightInfo =
+            if info.rightPrecedenceDoesNotAssociate rightInfo.leftPrecedence then
+                problemCannotMixNonAssociativeInfixOperators
+
+            else
+                rightInfo.extensionRightParser
+
+        apRResult : Result String InfixOperatorInfo
+        apRResult =
+            toResult precedence1ApR
+
+        appendResult : Result String InfixOperatorInfo
+        appendResult =
+            toResult precedence5append
+
+        apLResult : Result String InfixOperatorInfo
+        apLResult =
+            toResult precedence1ApL
+
+        composeRResult : Result String InfixOperatorInfo
+        composeRResult =
+            toResult precedence9ComposeR
+
+        eqResult : Result String InfixOperatorInfo
+        eqResult =
+            toResult precedence4Eq
+
+        mulResult : Result String InfixOperatorInfo
+        mulResult =
+            toResult precedence7Mul
+
+        consResult : Result String InfixOperatorInfo
+        consResult =
+            toResult precedence5Cons
+
+        addResult : Result String InfixOperatorInfo
+        addResult =
+            toResult precedence6Add
+
+        subResult : Result String InfixOperatorInfo
+        subResult =
+            toResult precedence6Sub
+
+        ignoreResult : Result String InfixOperatorInfo
+        ignoreResult =
+            toResult precedence6Ignore
+
+        andResult : Result String InfixOperatorInfo
+        andResult =
+            toResult precedence3And
+
+        keepResult : Result String InfixOperatorInfo
+        keepResult =
+            toResult precedence5Keep
+
+        composeLResult : Result String InfixOperatorInfo
+        composeLResult =
+            toResult precedence9ComposeL
+
+        neqResult : Result String InfixOperatorInfo
+        neqResult =
+            toResult precedence4Neq
+
+        idivResult : Result String InfixOperatorInfo
+        idivResult =
+            toResult precedence7Idiv
+
+        fdivResult : Result String InfixOperatorInfo
+        fdivResult =
+            toResult precedence7Fdiv
+
+        slashResult : Result String InfixOperatorInfo
+        slashResult =
+            toResult precedence7Slash
+
+        orResult : Result String InfixOperatorInfo
+        orResult =
+            toResult precedence2Or
+
+        leResult : Result String InfixOperatorInfo
+        leResult =
+            toResult precedence4Le
+
+        geResult : Result String InfixOperatorInfo
+        geResult =
+            toResult precedence4Ge
+
+        gtResult : Result String InfixOperatorInfo
+        gtResult =
+            toResult precedence4Gt
+
+        questionMarkResult : Result String InfixOperatorInfo
+        questionMarkResult =
+            toResult precedence8QuestionMark
+
+        ltResult : Result String InfixOperatorInfo
+        ltResult =
+            toResult precedence4Lt
+
+        powResult : Result String InfixOperatorInfo
+        powResult =
+            toResult precedence8Pow
+    in
     ParserFast.whileWithoutLinebreakAnd2PartUtf16ToResultAndThen
         Tokens.isOperatorSymbolChar
         (\operator ->
             case operator of
                 "|>" ->
-                    toResult precedence1ApR
+                    apRResult
 
                 "++" ->
-                    toResult precedence5append
+                    appendResult
 
                 "<|" ->
-                    toResult precedence1ApL
+                    apLResult
 
                 ">>" ->
-                    toResult precedence9ComposeR
+                    composeRResult
 
                 "==" ->
-                    toResult precedence4Eq
+                    eqResult
 
                 "*" ->
-                    toResult precedence7Mul
+                    mulResult
 
                 "::" ->
-                    toResult precedence5Cons
+                    consResult
 
                 "+" ->
-                    toResult precedence6Add
+                    addResult
 
                 "-" ->
-                    toResult precedence6Sub
+                    subResult
 
                 "|." ->
-                    toResult precedence6Ignore
+                    ignoreResult
 
                 "&&" ->
-                    toResult precedence3And
+                    andResult
 
                 "|=" ->
-                    toResult precedence5Keep
+                    keepResult
 
                 "<<" ->
-                    toResult precedence9ComposeL
+                    composeLResult
 
                 "/=" ->
-                    toResult precedence4Neq
+                    neqResult
 
                 "//" ->
-                    toResult precedence7Idiv
+                    idivResult
 
                 "/" ->
-                    toResult precedence7Fdiv
+                    fdivResult
 
                 "</>" ->
-                    toResult precedence7Slash
+                    slashResult
 
                 "||" ->
-                    toResult precedence2Or
+                    orResult
 
                 "<=" ->
-                    toResult precedence4Le
+                    leResult
 
                 ">=" ->
-                    toResult precedence4Ge
+                    geResult
 
                 ">" ->
-                    toResult precedence4Gt
+                    gtResult
 
                 "<?>" ->
-                    toResult precedence8QuestionMark
+                    questionMarkResult
 
                 "<" ->
-                    toResult precedence4Lt
+                    ltResult
 
                 "^" ->
-                    toResult precedence8Pow
+                    powResult
 
                 _ ->
                     errUnknownInfixOperator
@@ -1468,7 +1618,7 @@ applyExtensionRight (ExtendRightByOperation operation) ((Node leftRange _) as le
 type alias InfixOperatorInfo =
     { leftPrecedence : Int
     , symbol : String
-    , extensionRight : Parser (WithComments ExtensionRight)
+    , extensionRightParser : Parser (WithComments ExtensionRight)
     }
 
 
@@ -1481,31 +1631,27 @@ infixLeft : Int -> String -> InfixOperatorInfo
 infixLeft leftPrecedence symbol =
     { leftPrecedence = leftPrecedence
     , symbol = symbol
-    , extensionRight =
-        ParserFast.map2
-            (\commentsBeforeFirst first ->
-                { comments =
-                    commentsBeforeFirst
-                        |> Rope.prependTo first.comments
-                , syntax =
-                    ExtendRightByOperation
-                        { symbol = symbol
-                        , direction = Infix.Left
-                        , expression = first.syntax
-                        }
-                }
-            )
-            Layout.maybeLayout
-            (extendedSubExpressionOptimisticLayout
-                (\info ->
-                    if info.leftPrecedence > leftPrecedence then
-                        Ok info
+    , extensionRightParser =
+        extensionRightParser
+            { direction = Infix.Left
+            , rightPrecedenceAbove = leftPrecedence
+            , rightPrecedenceDoesNotAssociate = \_ -> False
+            , symbol = symbol
+            }
+    }
 
-                    else
-                        temporaryErrPrecedenceTooHigh
-                )
-                .extensionRight
-            )
+
+infixRight : Int -> String -> InfixOperatorInfo
+infixRight leftPrecedence symbol =
+    { leftPrecedence = leftPrecedence
+    , symbol = symbol
+    , extensionRightParser =
+        extensionRightParser
+            { direction = Infix.Right
+            , rightPrecedenceAbove = leftPrecedence - 1
+            , rightPrecedenceDoesNotAssociate = \_ -> False
+            , symbol = symbol
+            }
     }
 
 
@@ -1513,79 +1659,16 @@ infixNonAssociative : Int -> String -> InfixOperatorInfo
 infixNonAssociative leftPrecedence symbol =
     { leftPrecedence = leftPrecedence
     , symbol = symbol
-    , extensionRight =
-        ParserFast.map2
-            (\commentsBefore right ->
-                { comments = commentsBefore |> Rope.prependTo right.comments
-                , syntax =
-                    ExtendRightByOperation
-                        { symbol = symbol
-                        , direction = Infix.Non
-                        , expression = right.syntax
-                        }
-                }
-            )
-            Layout.maybeLayout
-            (extendedSubExpressionOptimisticLayout
-                (\info ->
-                    if info.leftPrecedence >= leftPrecedence then
-                        Ok info
-
-                    else
-                        temporaryErrPrecedenceTooHigh
-                )
-                (\info ->
-                    if info.leftPrecedence == leftPrecedence then
-                        problemCannotMixNonAssociativeInfixOperators
-
-                    else
-                        -- info.leftPrecedence > leftPrecedence
-                        info.extensionRight
-                )
-            )
+    , extensionRightParser =
+        extensionRightParser
+            { direction = Infix.Non
+            , rightPrecedenceAbove = leftPrecedence - 1
+            , rightPrecedenceDoesNotAssociate =
+                \rightLeftPrecedence ->
+                    rightLeftPrecedence == leftPrecedence
+            , symbol = symbol
+            }
     }
-
-
-problemCannotMixNonAssociativeInfixOperators : Parser a
-problemCannotMixNonAssociativeInfixOperators =
-    ParserFast.problem "cannot mix non-associative infix operators without parenthesis"
-
-
-infixRight : Int -> String -> InfixOperatorInfo
-infixRight leftPrecedence symbol =
-    { leftPrecedence = leftPrecedence
-    , symbol = symbol
-    , extensionRight =
-        ParserFast.map2
-            (\commentsBeforeFirst first ->
-                { comments =
-                    commentsBeforeFirst
-                        |> Rope.prependTo first.comments
-                , syntax =
-                    ExtendRightByOperation
-                        { symbol = symbol
-                        , direction = Infix.Right
-                        , expression = first.syntax
-                        }
-                }
-            )
-            Layout.maybeLayout
-            (extendedSubExpressionOptimisticLayout
-                (\info ->
-                    if info.leftPrecedence >= leftPrecedence then
-                        Ok info
-
-                    else
-                        temporaryErrPrecedenceTooHigh
-                )
-                .extensionRight
-            )
-    }
-
-
-temporaryErrPrecedenceTooHigh : Result String a
-temporaryErrPrecedenceTooHigh =
-    Err "infix operator precedence too high"
 
 
 type ExtensionRight

@@ -233,7 +233,7 @@ expression : Parser (WithComments (Node Expression))
 expression =
     extendedSubExpressionOptimisticLayout
         { afterCommitting = .extensionRightParser
-        , rightPrecedenceAbove = 0
+        , validateRightPrecedence = Ok
         }
 
 
@@ -1169,7 +1169,7 @@ type Tupled
 extendedSubExpressionOptimisticLayout :
     { info
         | afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
-        , rightPrecedenceAbove : Int
+        , validateRightPrecedence : InfixOperatorInfo -> Result String InfixOperatorInfo
     }
     -> Parser (WithComments (Node Expression))
 extendedSubExpressionOptimisticLayout info =
@@ -1203,7 +1203,7 @@ temporaryErrPrecedenceTooHigh =
 extensionRightParser :
     { afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
     , direction : Infix.InfixDirection
-    , rightPrecedenceAbove : Int
+    , validateRightPrecedence : InfixOperatorInfo -> Result String InfixOperatorInfo
     , symbol : String
     }
     -> Parser (WithComments ExtensionRight)
@@ -1228,18 +1228,14 @@ extensionRightParser extensionRightInfo =
 infixOperatorAndThen :
     { info
         | afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
-        , rightPrecedenceAbove : Int
+        , validateRightPrecedence : InfixOperatorInfo -> Result String InfixOperatorInfo
     }
     -> Parser (WithComments ExtensionRight)
 infixOperatorAndThen extensionRightConstraints =
     let
         toResult : InfixOperatorInfo -> Result String InfixOperatorInfo
-        toResult rightInfo =
-            if rightInfo.leftPrecedence > extensionRightConstraints.rightPrecedenceAbove then
-                Ok rightInfo
-
-            else
-                temporaryErrPrecedenceTooHigh
+        toResult =
+            extensionRightConstraints.validateRightPrecedence
 
         apRResult : Result String InfixOperatorInfo
         apRResult =
@@ -1635,7 +1631,13 @@ infixLeft leftPrecedence symbol =
         extensionRightParser
             { afterCommitting = .extensionRightParser
             , direction = Infix.Left
-            , rightPrecedenceAbove = leftPrecedence
+            , validateRightPrecedence =
+                \rightInfo ->
+                    if rightInfo.leftPrecedence > leftPrecedence then
+                        Ok rightInfo
+
+                    else
+                        temporaryErrPrecedenceTooHigh
             , symbol = symbol
             }
     }
@@ -1649,7 +1651,13 @@ infixRight leftPrecedence symbol =
         extensionRightParser
             { afterCommitting = .extensionRightParser
             , direction = Infix.Right
-            , rightPrecedenceAbove = leftPrecedence - 1
+            , validateRightPrecedence =
+                \rightInfo ->
+                    if rightInfo.leftPrecedence >= leftPrecedence then
+                        Ok rightInfo
+
+                    else
+                        temporaryErrPrecedenceTooHigh
             , symbol = symbol
             }
     }
@@ -1669,7 +1677,13 @@ infixNonAssociative leftPrecedence symbol =
                     else
                         rightInfo.extensionRightParser
             , direction = Infix.Non
-            , rightPrecedenceAbove = leftPrecedence - 1
+            , validateRightPrecedence =
+                \rightInfo ->
+                    if rightInfo.leftPrecedence >= leftPrecedence then
+                        Ok rightInfo
+
+                    else
+                        temporaryErrPrecedenceTooHigh
             , symbol = symbol
             }
     }

@@ -1203,8 +1203,8 @@ temporaryErrPrecedenceTooHigh =
 extensionRightParser :
     { afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
     , direction : Infix.InfixDirection
-    , validateRightPrecedence : InfixOperatorInfo -> Result String InfixOperatorInfo
     , symbol : String
+    , validateRightPrecedence : InfixOperatorInfo -> Result String InfixOperatorInfo
     }
     -> Parser (WithComments ExtensionRight)
 extensionRightParser extensionRightInfo =
@@ -1631,6 +1631,7 @@ infixLeft leftPrecedence symbol =
         extensionRightParser
             { afterCommitting = .extensionRightParser
             , direction = Infix.Left
+            , symbol = symbol
             , validateRightPrecedence =
                 \rightInfo ->
                     if rightInfo.leftPrecedence > leftPrecedence then
@@ -1638,7 +1639,6 @@ infixLeft leftPrecedence symbol =
 
                     else
                         temporaryErrPrecedenceTooHigh
-            , symbol = symbol
             }
     }
 
@@ -1651,6 +1651,7 @@ infixRight leftPrecedence symbol =
         extensionRightParser
             { afterCommitting = .extensionRightParser
             , direction = Infix.Right
+            , symbol = symbol
             , validateRightPrecedence =
                 \rightInfo ->
                     if rightInfo.leftPrecedence >= leftPrecedence then
@@ -1658,7 +1659,6 @@ infixRight leftPrecedence symbol =
 
                     else
                         temporaryErrPrecedenceTooHigh
-            , symbol = symbol
             }
     }
 
@@ -1677,6 +1677,7 @@ infixNonAssociative leftPrecedence symbol =
                     else
                         rightInfo.extensionRightParser
             , direction = Infix.Non
+            , symbol = symbol
             , validateRightPrecedence =
                 \rightInfo ->
                     if rightInfo.leftPrecedence >= leftPrecedence then
@@ -1684,7 +1685,6 @@ infixNonAssociative leftPrecedence symbol =
 
                     else
                         temporaryErrPrecedenceTooHigh
-            , symbol = symbol
             }
     }
 

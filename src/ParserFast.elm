@@ -2,7 +2,7 @@ module ParserFast exposing
     ( Parser, run
     , symbol, symbolWithEndLocation, symbolWithRange, symbolFollowedBy, symbolBacktrackableFollowedBy, followedBySymbol
     , keyword, keywordFollowedBy
-    , anyChar, while, whileWithoutLinebreak, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen, whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
+    , anyChar, while, whileWithoutLinebreak, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen, whileAtMost3WithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
     , integerDecimalMapWithRange, integerDecimalOrHexadecimalMapWithRange, floatOrIntegerDecimalOrHexadecimalMapWithRange
     , skipWhileWhitespaceFollowedBy, followedBySkipWhileWhitespace, nestableMultiCommentMapWithRange
     , map, validate, lazy
@@ -66,7 +66,7 @@ With `ParserFast`, you need to either
 
 # Fuzzy match primitives
 
-@docs anyChar, while, whileWithoutLinebreak, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen, whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
+@docs anyChar, while, whileWithoutLinebreak, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen, whileAtMost3WithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
 @docs integerDecimalMapWithRange, integerDecimalOrHexadecimalMapWithRange, floatOrIntegerDecimalOrHexadecimalMapWithRange
 
 
@@ -2690,15 +2690,6 @@ skipWhileWithoutLinebreakHelp isGood offset row col src indent =
         }
 
 
-skipWhileWithoutLinebreakAnd2PartUtf16Help : (Char -> Bool) -> Int -> String -> Int
-skipWhileWithoutLinebreakAnd2PartUtf16Help isGood offset src =
-    if String.any isGood (String.slice offset (offset + 1) src) then
-        skipWhileWithoutLinebreakAnd2PartUtf16Help isGood (offset + 1) src
-
-    else
-        offset
-
-
 followedBySkipWhileWhitespace : Parser before -> Parser before
 followedBySkipWhileWhitespace (Parser parseBefore) =
     Parser
@@ -2907,8 +2898,8 @@ whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen charAsStringIsOkay cons
         )
 
 
-whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol : (Range -> String -> res) -> (Char -> Bool) -> (String -> Bool) -> String -> Parser res
-whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol whileRangeAndContentToRes whileCharIsOkay whileResultIsOkay mandatoryFinalSymbol =
+whileAtMost3WithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol : (Range -> String -> res) -> (String -> Bool) -> (String -> Bool) -> String -> Parser res
+whileAtMost3WithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol whileRangeAndContentToRes whileCharIsOkay whileResultIsOkay mandatoryFinalSymbol =
     let
         mandatoryFinalSymbolLength : Int
         mandatoryFinalSymbolLength =
@@ -2917,44 +2908,51 @@ whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySym
     Parser
         (\s0 ->
             let
-                s1Offset : Int
-                s1Offset =
-                    skipWhileWithoutLinebreakAnd2PartUtf16Help
-                        whileCharIsOkay
-                        s0.offset
-                        s0.src
+                src : String
+                src =
+                    s0.src
 
-                whileContent : String
-                whileContent =
-                    String.slice s0.offset s1Offset s0.src
+                s0Offset : Int
+                s0Offset =
+                    s0.offset
+
+                ( consumedBeforeFinalSymbolLength, consumedBeforeFinalSymbolString ) =
+                    if whileCharIsOkay (String.slice s0Offset (s0Offset + 1) src) then
+                        if whileCharIsOkay (String.slice (s0Offset + 1) (s0Offset + 2) src) then
+                            if whileCharIsOkay (String.slice (s0Offset + 2) (s0Offset + 3) src) then
+                                ( 3, String.slice s0Offset (s0Offset + 3) src )
+
+                            else
+                                ( 2, String.slice s0Offset (s0Offset + 2) src )
+
+                        else
+                            ( 1, String.slice s0Offset (s0Offset + 1) src )
+
+                    else
+                        ( 0, "" )
             in
             if
-                (String.slice s1Offset (s1Offset + mandatoryFinalSymbolLength) s0.src
+                (String.slice (s0Offset + consumedBeforeFinalSymbolLength) (s0Offset + consumedBeforeFinalSymbolLength + mandatoryFinalSymbolLength) src
                     == (mandatoryFinalSymbol ++ "")
                 )
-                    && whileResultIsOkay whileContent
+                    && whileResultIsOkay consumedBeforeFinalSymbolString
             then
-                let
-                    s1Column : Int
-                    s1Column =
-                        s0.col + (s1Offset - s0.offset)
-                in
                 Good
                     (whileRangeAndContentToRes
                         { start = { row = s0.row, column = s0.col }
-                        , end = { row = s0.row, column = s1Column }
+                        , end = { row = s0.row, column = s0.col + consumedBeforeFinalSymbolLength }
                         }
-                        whileContent
+                        consumedBeforeFinalSymbolString
                     )
-                    { src = s0.src
-                    , offset = s1Offset + mandatoryFinalSymbolLength
+                    { src = src
+                    , offset = s0Offset + consumedBeforeFinalSymbolLength + mandatoryFinalSymbolLength
                     , indent = s0.indent
                     , row = s0.row
-                    , col = s1Column + mandatoryFinalSymbolLength
+                    , col = s0.col + consumedBeforeFinalSymbolLength + mandatoryFinalSymbolLength
                     }
 
             else
-                Bad False (ExpectingStringSatisfyingPredicate s0.row (s0.col + 1))
+                Bad False (ExpectingStringSatisfyingPredicate s0.row s0.col)
         )
 
 

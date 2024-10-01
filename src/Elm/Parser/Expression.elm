@@ -1063,7 +1063,7 @@ tupledExpressionIfNecessaryFollowedByRecordAccess =
 
 allowedPrefixOperatorFollowedByClosingParensOneOf : Parser (WithComments (Node Expression))
 allowedPrefixOperatorFollowedByClosingParensOneOf =
-    ParserFast.whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
+    ParserFast.whileAtMost3WithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
         (\operatorRange operator ->
             { comments = Rope.empty
             , syntax =
@@ -1074,7 +1074,7 @@ allowedPrefixOperatorFollowedByClosingParensOneOf =
                     (PrefixOperator operator)
             }
         )
-        Tokens.isOperatorSymbolChar
+        Tokens.isOperatorSymbolCharAsString
         Tokens.isAllowedOperatorToken
         ")"
 

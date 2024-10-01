@@ -1,7 +1,7 @@
 module Elm.Parser.Tokens exposing
     ( inToken
     , equal, parensEnd
-    , isAllowedOperatorToken, isOperatorSymbolChar, isOperatorSymbolCharAsString
+    , isAllowedOperatorToken, isOperatorSymbolCharAsString
     , characterLiteralMapWithRange, singleOrTripleQuotedStringLiteralMapWithRange
     , functionName, functionNameNode, functionNameMapWithRange, functionNameNotInfixNode, typeName, typeNameNode, typeNameMapWithRange
     )
@@ -11,7 +11,7 @@ module Elm.Parser.Tokens exposing
 @docs inToken
 
 @docs equal, parensEnd
-@docs isAllowedOperatorToken, isOperatorSymbolChar, isOperatorSymbolCharAsString
+@docs isAllowedOperatorToken, isOperatorSymbolCharAsString
 
 @docs characterLiteralMapWithRange, singleOrTripleQuotedStringLiteralMapWithRange
 @docs functionName, functionNameNode, functionNameMapWithRange, functionNameNotInfixNode, typeName, typeNameNode, typeNameMapWithRange
@@ -394,52 +394,6 @@ isAllowedOperatorToken operatorCandidateToValidate =
             True
 
         "-" ->
-            True
-
-        _ ->
-            False
-
-
-isOperatorSymbolChar : Char -> Bool
-isOperatorSymbolChar c =
-    case c of
-        '|' ->
-            True
-
-        '+' ->
-            True
-
-        '<' ->
-            True
-
-        '>' ->
-            True
-
-        '=' ->
-            True
-
-        '*' ->
-            True
-
-        ':' ->
-            True
-
-        '-' ->
-            True
-
-        '/' ->
-            True
-
-        '&' ->
-            True
-
-        '.' ->
-            True
-
-        '?' ->
-            True
-
-        '^' ->
             True
 
         _ ->

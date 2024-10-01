@@ -454,7 +454,7 @@ infixDeclaration =
         (ParserFast.integerDecimalMapWithRange Node)
         Layout.maybeLayout
         (ParserFast.symbolFollowedBy "("
-            (ParserFast.whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
+            (ParserFast.whileAtMost3WithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
                 (\operatorRange operator ->
                     Node
                         { start = { row = operatorRange.start.row, column = operatorRange.start.column - 1 }
@@ -462,7 +462,7 @@ infixDeclaration =
                         }
                         operator
                 )
-                Tokens.isOperatorSymbolChar
+                Tokens.isOperatorSymbolCharAsString
                 Tokens.isAllowedOperatorToken
                 ")"
             )

@@ -1167,7 +1167,7 @@ type Tupled
 
 
 extendedSubExpressionOptimisticLayout :
-    { info_
+    { info
         | afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
         , rightPrecedenceAbove : Int
     }
@@ -1226,7 +1226,7 @@ extensionRightParser extensionRightInfo =
 
 
 infixOperatorAndThen :
-    { info_
+    { info
         | afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
         , rightPrecedenceAbove : Int
     }

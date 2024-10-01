@@ -1333,8 +1333,8 @@ infixOperatorAndThen extensionRightConstraints =
         powResult =
             toResult precedence8Pow
     in
-    ParserFast.whileWithoutLinebreakAnd2PartUtf16ToResultAndThen
-        Tokens.isOperatorSymbolChar
+    ParserFast.whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen
+        Tokens.isOperatorSymbolCharAsString
         (\operator ->
             case operator of
                 "|>" ->

@@ -2,7 +2,7 @@ module ParserFast exposing
     ( Parser, run
     , symbol, symbolWithEndLocation, symbolWithRange, symbolFollowedBy, symbolBacktrackableFollowedBy, followedBySymbol
     , keyword, keywordFollowedBy
-    , anyChar, while, whileWithoutLinebreak, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileWithoutLinebreakAnd2PartUtf16ToResultAndThen, whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
+    , anyChar, while, whileWithoutLinebreak, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen, whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
     , integerDecimalMapWithRange, integerDecimalOrHexadecimalMapWithRange, floatOrIntegerDecimalOrHexadecimalMapWithRange
     , skipWhileWhitespaceFollowedBy, followedBySkipWhileWhitespace, nestableMultiCommentMapWithRange
     , map, validate, lazy
@@ -66,7 +66,7 @@ With `ParserFast`, you need to either
 
 # Fuzzy match primitives
 
-@docs anyChar, while, whileWithoutLinebreak, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileWithoutLinebreakAnd2PartUtf16ToResultAndThen, whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
+@docs anyChar, while, whileWithoutLinebreak, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen, whileWithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
 @docs integerDecimalMapWithRange, integerDecimalOrHexadecimalMapWithRange, floatOrIntegerDecimalOrHexadecimalMapWithRange
 
 
@@ -2858,43 +2858,52 @@ ifFollowedByWhileValidateWithoutLinebreak firstIsOkay afterFirstIsOkay resultIsO
         )
 
 
-whileWithoutLinebreakAnd2PartUtf16ToResultAndThen : (Char -> Bool) -> (String -> Result String intermediate) -> (intermediate -> Parser res) -> Parser res
-whileWithoutLinebreakAnd2PartUtf16ToResultAndThen whileCharIsOkay consumedStringToIntermediateOrErr intermediateToFollowupParser =
+whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen : (String -> Bool) -> (String -> Result String intermediate) -> (intermediate -> Parser res) -> Parser res
+whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen charAsStringIsOkay consumedStringToIntermediateOrErr intermediateToFollowupParser =
     Parser
         (\s0 ->
             let
-                s1Offset : Int
-                s1Offset =
-                    skipWhileWithoutLinebreakAnd2PartUtf16Help
-                        whileCharIsOkay
-                        s0.offset
-                        s0.src
+                src : String
+                src =
+                    s0.src
 
-                whileContent : String
-                whileContent =
-                    String.slice s0.offset s1Offset s0.src
+                s0Offset : Int
+                s0Offset =
+                    s0.offset
+
+                consumed : { length : Int, string : String }
+                consumed =
+                    if charAsStringIsOkay (String.slice s0Offset (s0Offset + 1) src) then
+                        if charAsStringIsOkay (String.slice (s0Offset + 1) (s0Offset + 2) src) then
+                            if charAsStringIsOkay (String.slice (s0Offset + 2) (s0Offset + 3) src) then
+                                { length = 3, string = String.slice s0Offset (s0Offset + 3) src }
+
+                            else
+                                { length = 2, string = String.slice s0Offset (s0Offset + 2) src }
+
+                        else
+                            { length = 1, string = String.slice s0Offset (s0Offset + 1) src }
+
+                    else
+                        { length = 0, string = "" }
             in
-            case consumedStringToIntermediateOrErr whileContent of
-                Err problemMessage ->
-                    Bad False (ExpectingCustom s0.row s0.col problemMessage)
-
+            case consumedStringToIntermediateOrErr consumed.string of
                 Ok intermediate ->
                     let
-                        s1Column : Int
-                        s1Column =
-                            s0.col + (s1Offset - s0.offset)
-
                         (Parser parseFollowup) =
                             intermediateToFollowupParser intermediate
                     in
                     parseFollowup
-                        { src = s0.src
-                        , offset = s1Offset
+                        { src = src
+                        , offset = s0Offset + consumed.length
                         , indent = s0.indent
                         , row = s0.row
-                        , col = s1Column
+                        , col = s0.col + consumed.length
                         }
                         |> pStepCommit
+
+                Err problemMessage ->
+                    Bad False (ExpectingCustom s0.row s0.col problemMessage)
         )
 
 

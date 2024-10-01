@@ -232,8 +232,8 @@ precedence9ComposeL =
 expression : Parser (WithComments (Node Expression))
 expression =
     extendedSubExpressionOptimisticLayout
-        { rightPrecedenceAbove = 0
-        , rightPrecedenceDoesNotAssociate = \_ -> False
+        { afterCommitting = .extensionRightParser
+        , rightPrecedenceAbove = 0
         }
 
 
@@ -1167,7 +1167,10 @@ type Tupled
 
 
 extendedSubExpressionOptimisticLayout :
-    { info_ | rightPrecedenceAbove : Int, rightPrecedenceDoesNotAssociate : Int -> Bool }
+    { info_
+        | afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
+        , rightPrecedenceAbove : Int
+    }
     -> Parser (WithComments (Node Expression))
 extendedSubExpressionOptimisticLayout info =
     ParserFast.loopWhileSucceedsOntoResultFromParser
@@ -1198,9 +1201,9 @@ temporaryErrPrecedenceTooHigh =
 
 
 extensionRightParser :
-    { direction : Infix.InfixDirection
+    { afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
+    , direction : Infix.InfixDirection
     , rightPrecedenceAbove : Int
-    , rightPrecedenceDoesNotAssociate : Int -> Bool
     , symbol : String
     }
     -> Parser (WithComments ExtensionRight)
@@ -1222,24 +1225,21 @@ extensionRightParser extensionRightInfo =
         )
 
 
-infixOperatorAndThen : { info_ | rightPrecedenceAbove : Int, rightPrecedenceDoesNotAssociate : Int -> Bool } -> Parser (WithComments ExtensionRight)
-infixOperatorAndThen info =
+infixOperatorAndThen :
+    { info_
+        | afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
+        , rightPrecedenceAbove : Int
+    }
+    -> Parser (WithComments ExtensionRight)
+infixOperatorAndThen extensionRightConstraints =
     let
         toResult : InfixOperatorInfo -> Result String InfixOperatorInfo
         toResult rightInfo =
-            if rightInfo.leftPrecedence > info.rightPrecedenceAbove then
+            if rightInfo.leftPrecedence > extensionRightConstraints.rightPrecedenceAbove then
                 Ok rightInfo
 
             else
                 temporaryErrPrecedenceTooHigh
-
-        afterCommitting : InfixOperatorInfo -> Parser (WithComments ExtensionRight)
-        afterCommitting rightInfo =
-            if info.rightPrecedenceDoesNotAssociate rightInfo.leftPrecedence then
-                problemCannotMixNonAssociativeInfixOperators
-
-            else
-                rightInfo.extensionRightParser
 
         apRResult : Result String InfixOperatorInfo
         apRResult =
@@ -1416,7 +1416,7 @@ infixOperatorAndThen info =
                 _ ->
                     errUnknownInfixOperator
         )
-        afterCommitting
+        extensionRightConstraints.afterCommitting
 
 
 subExpressionMaybeAppliedOptimisticLayout : Parser (WithComments (Node Expression))
@@ -1633,9 +1633,9 @@ infixLeft leftPrecedence symbol =
     , symbol = symbol
     , extensionRightParser =
         extensionRightParser
-            { direction = Infix.Left
+            { afterCommitting = .extensionRightParser
+            , direction = Infix.Left
             , rightPrecedenceAbove = leftPrecedence
-            , rightPrecedenceDoesNotAssociate = \_ -> False
             , symbol = symbol
             }
     }
@@ -1647,9 +1647,9 @@ infixRight leftPrecedence symbol =
     , symbol = symbol
     , extensionRightParser =
         extensionRightParser
-            { direction = Infix.Right
+            { afterCommitting = .extensionRightParser
+            , direction = Infix.Right
             , rightPrecedenceAbove = leftPrecedence - 1
-            , rightPrecedenceDoesNotAssociate = \_ -> False
             , symbol = symbol
             }
     }
@@ -1661,11 +1661,15 @@ infixNonAssociative leftPrecedence symbol =
     , symbol = symbol
     , extensionRightParser =
         extensionRightParser
-            { direction = Infix.Non
+            { afterCommitting =
+                \rightInfo ->
+                    if rightInfo.leftPrecedence == leftPrecedence then
+                        problemCannotMixNonAssociativeInfixOperators
+
+                    else
+                        rightInfo.extensionRightParser
+            , direction = Infix.Non
             , rightPrecedenceAbove = leftPrecedence - 1
-            , rightPrecedenceDoesNotAssociate =
-                \rightLeftPrecedence ->
-                    rightLeftPrecedence == leftPrecedence
             , symbol = symbol
             }
     }

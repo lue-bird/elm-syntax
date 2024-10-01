@@ -403,22 +403,10 @@ isAllowedOperatorToken operatorCandidateToValidate =
 isOperatorSymbolChar : Char -> Bool
 isOperatorSymbolChar c =
     case c of
+        '|' ->
+            True
+
         '+' ->
-            True
-
-        '-' ->
-            True
-
-        '/' ->
-            True
-
-        '*' ->
-            True
-
-        '=' ->
-            True
-
-        '.' ->
             True
 
         '<' ->
@@ -427,19 +415,31 @@ isOperatorSymbolChar c =
         '>' ->
             True
 
+        '=' ->
+            True
+
+        '*' ->
+            True
+
         ':' ->
+            True
+
+        '-' ->
+            True
+
+        '/' ->
             True
 
         '&' ->
             True
 
-        '|' ->
-            True
-
-        '^' ->
+        '.' ->
             True
 
         '?' ->
+            True
+
+        '^' ->
             True
 
         _ ->

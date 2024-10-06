@@ -25,12 +25,14 @@ one onlyElement =
 
 filledPrependTo : Rope a -> RopeFilled a -> Rope a
 filledPrependTo right leftLikelyFilled =
-    case right of
-        Nothing ->
-            Just leftLikelyFilled
+    Just
+        (case right of
+            Nothing ->
+                leftLikelyFilled
 
-        Just rightLikelyFilled ->
-            Just (Branch2 leftLikelyFilled rightLikelyFilled)
+            Just rightLikelyFilled ->
+                Branch2 leftLikelyFilled rightLikelyFilled
+        )
 
 
 prependToFilled : RopeFilled a -> Rope a -> Rope a

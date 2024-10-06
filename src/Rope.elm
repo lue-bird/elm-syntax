@@ -35,12 +35,14 @@ filledPrependTo right leftLikelyFilled =
 
 prependToFilled : RopeFilled a -> Rope a -> Rope a
 prependToFilled rightLikelyFilled left =
-    case left of
-        Nothing ->
-            Just rightLikelyFilled
+    Just
+        (case left of
+            Nothing ->
+                rightLikelyFilled
 
-        Just leftLikelyFilled ->
-            Just (Branch2 leftLikelyFilled rightLikelyFilled)
+            Just leftLikelyFilled ->
+                Branch2 leftLikelyFilled rightLikelyFilled
+        )
 
 
 prependTo : Rope a -> Rope a -> Rope a

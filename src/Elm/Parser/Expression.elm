@@ -715,27 +715,17 @@ letFunction : Parser (WithComments (Node LetDeclaration))
 letFunction =
     ParserFast.map6WithStartLocation
         (\startNameStart startNameNode commentsAfterStartName maybeSignature arguments commentsAfterEqual expressionResult ->
-            let
-                allComments : Comments
-                allComments =
-                    (case maybeSignature of
-                        Nothing ->
-                            commentsAfterStartName
-
-                        Just signature ->
-                            commentsAfterStartName |> Rope.prependTo signature.comments
-                    )
-                        |> Rope.prependTo arguments.comments
-                        |> Rope.prependTo commentsAfterEqual
-                        |> Rope.prependTo expressionResult.comments
-            in
             case maybeSignature of
                 Nothing ->
                     let
                         (Node expressionRange _) =
                             expressionResult.syntax
                     in
-                    { comments = allComments
+                    { comments =
+                        commentsAfterStartName
+                            |> Rope.prependTo arguments.comments
+                            |> Rope.prependTo commentsAfterEqual
+                            |> Rope.prependTo expressionResult.comments
                     , syntax =
                         Node { start = startNameStart, end = expressionRange.end }
                             (LetFunction
@@ -759,7 +749,11 @@ letFunction =
                         (Node expressionRange _) =
                             expressionResult.syntax
                     in
-                    { comments = allComments
+                    { comments =
+                        (commentsAfterStartName |> Rope.prependTo signature.comments)
+                            |> Rope.prependTo arguments.comments
+                            |> Rope.prependTo commentsAfterEqual
+                            |> Rope.prependTo expressionResult.comments
                     , syntax =
                         Node { start = startNameStart, end = expressionRange.end }
                             (LetFunction

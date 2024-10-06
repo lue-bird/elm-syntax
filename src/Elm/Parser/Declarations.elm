@@ -302,26 +302,16 @@ functionDeclarationWithoutDocumentation =
     ParserFast.map6WithStartLocation
         (\startNameStart startNameNode commentsAfterStartName maybeSignature arguments commentsAfterEqual result ->
             let
-                allComments : Comments
-                allComments =
-                    (case maybeSignature of
-                        Nothing ->
-                            commentsAfterStartName
-
-                        Just signature ->
-                            commentsAfterStartName |> Rope.prependTo signature.comments
-                    )
-                        |> Rope.prependTo arguments.comments
-                        |> Rope.prependTo commentsAfterEqual
-                        |> Rope.prependTo result.comments
+                (Node expressionRange _) =
+                    result.syntax
             in
             case maybeSignature of
                 Nothing ->
-                    let
-                        (Node expressionRange _) =
-                            result.syntax
-                    in
-                    { comments = allComments
+                    { comments =
+                        commentsAfterStartName
+                            |> Rope.prependTo arguments.comments
+                            |> Rope.prependTo commentsAfterEqual
+                            |> Rope.prependTo result.comments
                     , syntax =
                         Node { start = startNameStart, end = expressionRange.end }
                             (Declaration.FunctionDeclaration
@@ -341,11 +331,12 @@ functionDeclarationWithoutDocumentation =
                     let
                         (Node implementationNameRange _) =
                             signature.implementationName
-
-                        (Node expressionRange _) =
-                            result.syntax
                     in
-                    { comments = allComments
+                    { comments =
+                        (commentsAfterStartName |> Rope.prependTo signature.comments)
+                            |> Rope.prependTo arguments.comments
+                            |> Rope.prependTo commentsAfterEqual
+                            |> Rope.prependTo result.comments
                     , syntax =
                         Node { start = startNameStart, end = expressionRange.end }
                             (Declaration.FunctionDeclaration

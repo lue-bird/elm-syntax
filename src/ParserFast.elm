@@ -118,9 +118,6 @@ Once a path is chosen, it does not come back and try the others.
 @docs mapWithRange, columnAndThen, offsetSourceAndThen, offsetSourceAndThenOrSucceed
 @docs problem
 
-
-# Test-only
-
 -}
 
 import Char.Extra

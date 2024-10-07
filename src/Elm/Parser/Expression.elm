@@ -1,4 +1,4 @@
-module Elm.Parser.Expression exposing (expression)
+module Elm.Parser.Expression exposing (expressionFollowedByOptimisticLayout)
 
 import Elm.Parser.Layout as Layout
 import Elm.Parser.Patterns as Patterns
@@ -39,7 +39,7 @@ subExpression =
                     caseOrUnqualifiedReferenceExpression
 
                 "\\" ->
-                    lambdaExpression
+                    lambdaExpressionFollowedByOptimisticLayout
 
                 "l" ->
                     letOrUnqualifiedReferenceExpression
@@ -64,21 +64,21 @@ subExpression =
 caseOrUnqualifiedReferenceExpression : Parser (WithComments (Node Expression))
 caseOrUnqualifiedReferenceExpression =
     ParserFast.oneOf2
-        caseExpression
+        caseExpressionFollowedByOptimisticLayout
         unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
 
 
 letOrUnqualifiedReferenceExpression : Parser (WithComments (Node Expression))
 letOrUnqualifiedReferenceExpression =
     ParserFast.oneOf2
-        letExpression
+        letExpressionFollowedByOptimisticLayout
         unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
 
 
 ifOrUnqualifiedReferenceExpression : Parser (WithComments (Node Expression))
 ifOrUnqualifiedReferenceExpression =
     ParserFast.oneOf2
-        ifBlockExpression
+        ifBlockExpressionFollowedByOptimisticLayout
         unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
 
 
@@ -229,8 +229,8 @@ precedence9ComposeL =
     infixLeft 9 "<<"
 
 
-expression : Parser (WithComments (Node Expression))
-expression =
+expressionFollowedByOptimisticLayout : Parser (WithComments (Node Expression))
+expressionFollowedByOptimisticLayout =
     extendedSubExpressionOptimisticLayout
         { afterCommitting = .extensionRightParser
         , validateRightPrecedence = Ok
@@ -290,20 +290,29 @@ expressionAfterOpeningSquareBracket =
             Layout.maybeLayout
             (ParserFast.oneOf2
                 (ParserFast.symbol "]" { comments = Rope.empty, syntax = ListExpr [] })
-                (ParserFast.map3
-                    (\head commentsAfterHead tail ->
+                (ParserFast.map2
+                    (\head tail ->
                         { comments =
                             head.comments
-                                |> Rope.prependTo commentsAfterHead
                                 |> Rope.prependTo tail.comments
                         , syntax = ListExpr (head.syntax :: tail.syntax)
                         }
                     )
-                    expression
-                    Layout.maybeLayout
-                    (ParserWithComments.many
-                        (ParserFast.symbolFollowedBy ","
-                            (Layout.maybeAroundBothSides expression)
+                    expressionFollowedByOptimisticLayout
+                    (Layout.positivelyIndentedFollowedBy
+                        (ParserWithComments.many
+                            (ParserFast.symbolFollowedBy ","
+                                (ParserFast.map2
+                                    (\commentsBefore expressionResult ->
+                                        { comments = commentsBefore |> Rope.prependTo expressionResult.comments
+                                        , syntax = expressionResult.syntax
+                                        }
+                                    )
+                                    Layout.maybeLayout
+                                    expressionFollowedByOptimisticLayout
+                                    |> Layout.endsPositivelyIndented
+                                )
+                            )
                         )
                     )
                     |> ParserFast.followedBySymbol "]"
@@ -367,18 +376,17 @@ recordContentsCurlyEnd =
                     )
                 )
                 (ParserFast.symbolFollowedBy "="
-                    (ParserFast.map3
-                        (\commentsBefore expressionResult commentsAfter ->
+                    (ParserFast.map2
+                        (\commentsBefore expressionResult ->
                             { comments =
                                 commentsBefore
                                     |> Rope.prependTo expressionResult.comments
-                                    |> Rope.prependTo commentsAfter
                             , syntax = FieldsFirstValue expressionResult.syntax
                             }
                         )
                         Layout.maybeLayout
-                        expression
-                        Layout.maybeLayout
+                        expressionFollowedByOptimisticLayout
+                        |> Layout.endsPositivelyIndented
                     )
                 )
             )
@@ -411,23 +419,22 @@ recordFields =
 
 recordSetterNodeWithLayout : Parser (WithComments (Node RecordSetter))
 recordSetterNodeWithLayout =
-    ParserFast.map5WithRange
-        (\range name commentsAfterFunctionName commentsAfterEquals expressionResult commentsAfterExpression ->
+    ParserFast.map4WithRange
+        (\range name commentsAfterFunctionName commentsAfterEquals expressionResult ->
             { comments =
                 commentsAfterFunctionName
                     |> Rope.prependTo commentsAfterEquals
                     |> Rope.prependTo expressionResult.comments
-                    |> Rope.prependTo commentsAfterExpression
             , syntax = Node range ( name, expressionResult.syntax )
             }
         )
         Tokens.functionNameNode
         Layout.maybeLayout
         (ParserFast.symbolFollowedBy "=" Layout.maybeLayout)
-        expression
+        expressionFollowedByOptimisticLayout
         -- This extra whitespace is just included for compatibility with earlier version
         -- TODO for v8: remove
-        Layout.maybeLayout
+        |> Layout.endsPositivelyIndented
 
 
 literalExpression : Parser (WithComments (Node Expression))
@@ -454,8 +461,8 @@ charLiteralExpression =
 -- lambda
 
 
-lambdaExpression : Parser (WithComments (Node Expression))
-lambdaExpression =
+lambdaExpressionFollowedByOptimisticLayout : Parser (WithComments (Node Expression))
+lambdaExpressionFollowedByOptimisticLayout =
     ParserFast.map6WithStartLocation
         (\start commentsAfterBackslash firstArg commentsAfterFirstArg secondUpArgs commentsAfterArrow expressionResult ->
             let
@@ -499,17 +506,17 @@ lambdaExpression =
             )
         )
         Layout.maybeLayout
-        expression
+        expressionFollowedByOptimisticLayout
 
 
 
 -- Case Expression
 
 
-caseExpression : Parser (WithComments (Node Expression))
-caseExpression =
-    ParserFast.map5WithStartLocation
-        (\start commentsAfterCase casedExpressionResult commentsBeforeOf commentsAfterOf casesResult ->
+caseExpressionFollowedByOptimisticLayout : Parser (WithComments (Node Expression))
+caseExpressionFollowedByOptimisticLayout =
+    ParserFast.map4WithStartLocation
+        (\start commentsAfterCase casedExpressionResult commentsAfterOf casesResult ->
             let
                 ( firstCase, lastToSecondCase ) =
                     casesResult.syntax
@@ -517,7 +524,6 @@ caseExpression =
             { comments =
                 commentsAfterCase
                     |> Rope.prependTo casedExpressionResult.comments
-                    |> Rope.prependTo commentsBeforeOf
                     |> Rope.prependTo commentsAfterOf
                     |> Rope.prependTo casesResult.comments
             , syntax =
@@ -543,14 +549,15 @@ caseExpression =
             }
         )
         (ParserFast.keywordFollowedBy "case" Layout.maybeLayout)
-        expression
-        Layout.maybeLayout
-        (ParserFast.keywordFollowedBy "of" Layout.maybeLayout)
-        (ParserFast.withIndentSetToColumn caseStatements)
+        expressionFollowedByOptimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (ParserFast.keywordFollowedBy "of" Layout.maybeLayout)
+        )
+        (ParserFast.withIndentSetToColumn caseStatementsFollowedByOptimisticLayout)
 
 
-caseStatements : Parser (WithComments ( Case, List Case ))
-caseStatements =
+caseStatementsFollowedByOptimisticLayout : Parser (WithComments ( Case, List Case ))
+caseStatementsFollowedByOptimisticLayout =
     ParserFast.map5
         (\firstCasePatternResult commentsAfterFirstCasePattern commentsAfterFirstCaseArrowRight firstCaseExpressionResult lastToSecondCase ->
             { comments =
@@ -568,12 +575,12 @@ caseStatements =
         Patterns.pattern
         Layout.maybeLayout
         (ParserFast.symbolFollowedBy "->" Layout.maybeLayout)
-        expression
-        (ParserWithComments.manyWithoutReverse caseStatement)
+        expressionFollowedByOptimisticLayout
+        (ParserWithComments.manyWithoutReverse caseStatementFollowedByOptimisticLayout)
 
 
-caseStatement : Parser (WithComments Case)
-caseStatement =
+caseStatementFollowedByOptimisticLayout : Parser (WithComments Case)
+caseStatementFollowedByOptimisticLayout =
     Layout.onTopIndentationFollowedBy
         (ParserFast.map4
             (\pattern commentsBeforeArrowRight commentsAfterArrowRight expr ->
@@ -588,7 +595,7 @@ caseStatement =
             Patterns.pattern
             Layout.maybeLayout
             (ParserFast.symbolFollowedBy "->" Layout.maybeLayout)
-            expression
+            expressionFollowedByOptimisticLayout
         )
 
 
@@ -596,8 +603,8 @@ caseStatement =
 -- Let Expression
 
 
-letExpression : Parser (WithComments (Node Expression))
-letExpression =
+letExpressionFollowedByOptimisticLayout : Parser (WithComments (Node Expression))
+letExpressionFollowedByOptimisticLayout =
     ParserFast.map3WithStartLocation
         (\start declarations commentsAfterIn expressionResult ->
             let
@@ -639,7 +646,7 @@ letExpression =
         (Layout.positivelyIndentedPlusFollowedBy 2
             Layout.maybeLayout
         )
-        expression
+        expressionFollowedByOptimisticLayout
 
 
 letDeclarationsIn : Parser (WithComments (List (Node LetDeclaration)))
@@ -655,33 +662,25 @@ letDeclarationsIn =
                 }
             )
             (ParserFast.oneOf2
-                letFunction
-                letDestructuringDeclaration
+                letFunctionFollowedByOptimisticLayout
+                letDestructuringDeclarationFollowedByOptimisticLayout
             )
             Layout.optimisticLayout
-            (ParserWithComments.until Tokens.inToken blockElement)
+            (ParserWithComments.until Tokens.inToken letBlockElementFollowedByOptimisticLayout)
         )
 
 
-blockElement : Parser (WithComments (Node LetDeclaration))
-blockElement =
+letBlockElementFollowedByOptimisticLayout : Parser (WithComments (Node LetDeclaration))
+letBlockElementFollowedByOptimisticLayout =
     Layout.onTopIndentationFollowedBy
-        (ParserFast.map2
-            (\letDeclarationResult commentsAfter ->
-                { comments = letDeclarationResult.comments |> Rope.prependTo commentsAfter
-                , syntax = letDeclarationResult.syntax
-                }
-            )
-            (ParserFast.oneOf2
-                letFunction
-                letDestructuringDeclaration
-            )
-            Layout.optimisticLayout
+        (ParserFast.oneOf2
+            letFunctionFollowedByOptimisticLayout
+            letDestructuringDeclarationFollowedByOptimisticLayout
         )
 
 
-letDestructuringDeclaration : Parser (WithComments (Node LetDeclaration))
-letDestructuringDeclaration =
+letDestructuringDeclarationFollowedByOptimisticLayout : Parser (WithComments (Node LetDeclaration))
+letDestructuringDeclarationFollowedByOptimisticLayout =
     ParserFast.map4
         (\pattern commentsAfterPattern commentsAfterEquals expressionResult ->
             let
@@ -704,11 +703,11 @@ letDestructuringDeclaration =
         Patterns.patternNotDirectlyComposing
         Layout.maybeLayout
         (ParserFast.symbolFollowedBy "=" Layout.maybeLayout)
-        expression
+        expressionFollowedByOptimisticLayout
 
 
-letFunction : Parser (WithComments (Node LetDeclaration))
-letFunction =
+letFunctionFollowedByOptimisticLayout : Parser (WithComments (Node LetDeclaration))
+letFunctionFollowedByOptimisticLayout =
     ParserFast.map6WithStartLocation
         (\startNameStart startNameNode commentsAfterStartName maybeSignature arguments commentsAfterEqual expressionResult ->
             case maybeSignature of
@@ -789,7 +788,7 @@ letFunction =
         )
         parameterPatternsEqual
         Layout.maybeLayout
-        expression
+        expressionFollowedByOptimisticLayout
         |> ParserFast.validate
             (\result ->
                 let
@@ -855,10 +854,10 @@ numberExpression =
         )
 
 
-ifBlockExpression : Parser (WithComments (Node Expression))
-ifBlockExpression =
-    ParserFast.map8WithStartLocation
-        (\start commentsAfterIf condition commentsBeforeThen commentsAfterThen ifTrue commentsBeforeElse commentsAfterElse ifFalse ->
+ifBlockExpressionFollowedByOptimisticLayout : Parser (WithComments (Node Expression))
+ifBlockExpressionFollowedByOptimisticLayout =
+    ParserFast.map6WithStartLocation
+        (\start commentsAfterIf condition commentsAfterThen ifTrue commentsAfterElse ifFalse ->
             let
                 (Node ifFalseRange _) =
                     ifFalse.syntax
@@ -866,10 +865,8 @@ ifBlockExpression =
             { comments =
                 commentsAfterIf
                     |> Rope.prependTo condition.comments
-                    |> Rope.prependTo commentsBeforeThen
                     |> Rope.prependTo commentsAfterThen
                     |> Rope.prependTo ifTrue.comments
-                    |> Rope.prependTo commentsBeforeElse
                     |> Rope.prependTo commentsAfterElse
                     |> Rope.prependTo ifFalse.comments
             , syntax =
@@ -885,13 +882,15 @@ ifBlockExpression =
             }
         )
         (ParserFast.keywordFollowedBy "if" Layout.maybeLayout)
-        expression
-        Layout.maybeLayout
-        (ParserFast.keywordFollowedBy "then" Layout.maybeLayout)
-        expression
-        Layout.maybeLayout
-        (ParserFast.keywordFollowedBy "else" Layout.maybeLayout)
-        expression
+        expressionFollowedByOptimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (ParserFast.keywordFollowedBy "then" Layout.maybeLayout)
+        )
+        expressionFollowedByOptimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (ParserFast.keywordFollowedBy "else" Layout.maybeLayout)
+        )
+        expressionFollowedByOptimisticLayout
 
 
 negationOperation : Parser (WithComments (Node Expression))
@@ -1069,12 +1068,11 @@ allowedPrefixOperatorFollowedByClosingParensOneOf =
 
 tupledExpressionInnerAfterOpeningParens : Parser (WithComments (Node Expression))
 tupledExpressionInnerAfterOpeningParens =
-    ParserFast.map4WithRange
-        (\rangeAfterOpeningParens commentsBeforeFirstPart firstPart commentsAfterFirstPart tailParts ->
+    ParserFast.map3WithRange
+        (\rangeAfterOpeningParens commentsBeforeFirstPart firstPart tailParts ->
             { comments =
                 commentsBeforeFirstPart
                     |> Rope.prependTo firstPart.comments
-                    |> Rope.prependTo commentsAfterFirstPart
                     |> Rope.prependTo tailParts.comments
             , syntax =
                 case tailParts.syntax of
@@ -1100,42 +1098,42 @@ tupledExpressionInnerAfterOpeningParens =
             }
         )
         Layout.maybeLayout
-        expression
-        Layout.maybeLayout
-        (ParserFast.oneOf2
-            (ParserFast.symbol ")"
-                { comments = Rope.empty, syntax = TupledParenthesized () () }
-            )
-            (ParserFast.symbolFollowedBy ","
-                (ParserFast.map4
-                    (\commentsBefore partResult commentsAfter maybeThirdPart ->
-                        { comments =
-                            commentsBefore
-                                |> Rope.prependTo partResult.comments
-                                |> Rope.prependTo commentsAfter
-                                |> Rope.prependTo maybeThirdPart.comments
-                        , syntax = TupledTwoOrThree partResult.syntax maybeThirdPart.syntax
-                        }
-                    )
-                    Layout.maybeLayout
-                    expression
-                    Layout.maybeLayout
-                    (ParserFast.oneOf2
-                        (ParserFast.symbol ")" { comments = Rope.empty, syntax = Nothing })
-                        (ParserFast.symbolFollowedBy ","
-                            (ParserFast.map3
-                                (\commentsBefore partResult commentsAfter ->
-                                    { comments =
-                                        commentsBefore
-                                            |> Rope.prependTo partResult.comments
-                                            |> Rope.prependTo commentsAfter
-                                    , syntax = Just partResult.syntax
-                                    }
+        expressionFollowedByOptimisticLayout
+        (Layout.positivelyIndentedFollowedBy
+            (ParserFast.oneOf2
+                (ParserFast.symbol ")"
+                    { comments = Rope.empty, syntax = TupledParenthesized () () }
+                )
+                (ParserFast.symbolFollowedBy ","
+                    (ParserFast.map3
+                        (\commentsBefore partResult maybeThirdPart ->
+                            { comments =
+                                commentsBefore
+                                    |> Rope.prependTo partResult.comments
+                                    |> Rope.prependTo maybeThirdPart.comments
+                            , syntax = TupledTwoOrThree partResult.syntax maybeThirdPart.syntax
+                            }
+                        )
+                        Layout.maybeLayout
+                        expressionFollowedByOptimisticLayout
+                        (Layout.positivelyIndentedFollowedBy
+                            (ParserFast.oneOf2
+                                (ParserFast.symbol ")" { comments = Rope.empty, syntax = Nothing })
+                                (ParserFast.symbolFollowedBy ","
+                                    (ParserFast.map2
+                                        (\commentsBefore partResult ->
+                                            { comments =
+                                                commentsBefore
+                                                    |> Rope.prependTo partResult.comments
+                                            , syntax = Just partResult.syntax
+                                            }
+                                        )
+                                        Layout.maybeLayout
+                                        expressionFollowedByOptimisticLayout
+                                        |> Layout.endsPositivelyIndented
+                                        |> ParserFast.followedBySymbol ")"
+                                    )
                                 )
-                                Layout.maybeLayout
-                                expression
-                                Layout.maybeLayout
-                                |> ParserFast.followedBySymbol ")"
                             )
                         )
                     )
@@ -1165,7 +1163,7 @@ extendedSubExpressionOptimisticLayout info =
         (Layout.positivelyIndentedFollowedBy
             (infixOperatorAndThen info)
         )
-        subExpressionMaybeAppliedOptimisticLayout
+        subExpressionMaybeAppliedFollowedByOptimisticLayout
         (\extensionRightResult leftNodeWithComments ->
             { comments =
                 leftNodeWithComments.comments
@@ -1403,8 +1401,8 @@ infixOperatorAndThen extensionRightConstraints =
         extensionRightConstraints.afterCommitting
 
 
-subExpressionMaybeAppliedOptimisticLayout : Parser (WithComments (Node Expression))
-subExpressionMaybeAppliedOptimisticLayout =
+subExpressionMaybeAppliedFollowedByOptimisticLayout : Parser (WithComments (Node Expression))
+subExpressionMaybeAppliedFollowedByOptimisticLayout =
     -- functionally, a simple oneOf would be correct as well.
     -- However, since this parser is called _a lot_,
     --   we squeeze out a bit more speed by de-duplicating slices etc
@@ -1427,7 +1425,7 @@ subExpressionMaybeAppliedOptimisticLayout =
                     caseOrUnqualifiedReferenceExpressionMaybeApplied
 
                 "\\" ->
-                    lambdaExpressionOptimisticLayout
+                    lambdaExpressionFollowedByOptimisticLayout
 
                 "l" ->
                     letOrUnqualifiedReferenceExpressionMaybeApplied
@@ -1447,11 +1445,6 @@ subExpressionMaybeAppliedOptimisticLayout =
                 _ ->
                     referenceOrNumberExpressionMaybeApplied
         )
-
-
-lambdaExpressionOptimisticLayout : Parser (WithComments (Node Expression))
-lambdaExpressionOptimisticLayout =
-    lambdaExpression |> followedByOptimisticLayout
 
 
 negationOperationOptimisticLayout : Parser (WithComments (Node Expression))
@@ -1508,7 +1501,7 @@ tupledExpressionIfNecessaryFollowedByRecordAccessMaybeApplied =
 caseOrUnqualifiedReferenceExpressionMaybeApplied : Parser (WithComments (Node Expression))
 caseOrUnqualifiedReferenceExpressionMaybeApplied =
     ParserFast.oneOf2
-        (caseExpression |> followedByOptimisticLayout)
+        caseExpressionFollowedByOptimisticLayout
         (unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
             |> followedByMultiArgumentApplication
         )
@@ -1517,7 +1510,7 @@ caseOrUnqualifiedReferenceExpressionMaybeApplied =
 letOrUnqualifiedReferenceExpressionMaybeApplied : Parser (WithComments (Node Expression))
 letOrUnqualifiedReferenceExpressionMaybeApplied =
     ParserFast.oneOf2
-        (letExpression |> followedByOptimisticLayout)
+        letExpressionFollowedByOptimisticLayout
         (unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
             |> followedByMultiArgumentApplication
         )
@@ -1526,7 +1519,7 @@ letOrUnqualifiedReferenceExpressionMaybeApplied =
 ifOrUnqualifiedReferenceExpressionMaybeApplied : Parser (WithComments (Node Expression))
 ifOrUnqualifiedReferenceExpressionMaybeApplied =
     ParserFast.oneOf2
-        (ifBlockExpression |> followedByOptimisticLayout)
+        ifBlockExpressionFollowedByOptimisticLayout
         (unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
             |> followedByMultiArgumentApplication
         )

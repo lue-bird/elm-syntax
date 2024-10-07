@@ -1,6 +1,6 @@
 module Elm.Parser.GlslTests exposing (all)
 
-import Elm.Parser.Expression exposing (expression)
+import Elm.Parser.Expression exposing (expressionFollowedByOptimisticLayout)
 import Elm.Parser.ParserWithCommentsTestUtil as ParserWithCommentsUtil
 import Elm.Syntax.Expression exposing (..)
 import Elm.Syntax.Node exposing (Node(..))
@@ -23,4 +23,4 @@ all =
 
 expectAst : Node Expression -> String -> Expect.Expectation
 expectAst =
-    ParserWithCommentsUtil.expectAst expression
+    ParserWithCommentsUtil.expectAst expressionFollowedByOptimisticLayout

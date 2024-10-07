@@ -1,7 +1,7 @@
 module Elm.Parser.ExpressionTests exposing (all)
 
 import Elm.Parser.Declarations
-import Elm.Parser.Expression exposing (expression)
+import Elm.Parser.Expression exposing (expressionFollowedByOptimisticLayout)
 import Elm.Parser.ParserWithCommentsTestUtil as ParserWithCommentsUtil
 import Elm.Syntax.Expression exposing (Expression(..))
 import Elm.Syntax.Infix as Infix exposing (InfixDirection(..))
@@ -963,9 +963,9 @@ all =
 
 expectAst : Node Expression -> String -> Expect.Expectation
 expectAst =
-    ParserWithCommentsUtil.expectAst expression
+    ParserWithCommentsUtil.expectAst expressionFollowedByOptimisticLayout
 
 
 expectAstWithComments : { ast : Node Expression, comments : List (Node String) } -> String -> Expect.Expectation
 expectAstWithComments =
-    ParserWithCommentsUtil.expectAstWithComments expression
+    ParserWithCommentsUtil.expectAstWithComments expressionFollowedByOptimisticLayout

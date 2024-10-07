@@ -1,6 +1,6 @@
 module Elm.Parser.LambdaExpressionTests exposing (all)
 
-import Elm.Parser.Expression exposing (expression)
+import Elm.Parser.Expression exposing (expressionFollowedByOptimisticLayout)
 import Elm.Parser.ParserWithCommentsTestUtil as ParserWithCommentsUtil
 import Elm.Syntax.Expression exposing (..)
 import Elm.Syntax.Infix exposing (InfixDirection(..))
@@ -95,4 +95,4 @@ all =
 
 expectAst : Node Expression -> String -> Expect.Expectation
 expectAst =
-    ParserWithCommentsUtil.expectAst expression
+    ParserWithCommentsUtil.expectAst expressionFollowedByOptimisticLayout

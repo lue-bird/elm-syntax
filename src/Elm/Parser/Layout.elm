@@ -1,5 +1,6 @@
 module Elm.Parser.Layout exposing
-    ( layoutStrict
+    ( endsPositivelyIndented
+    , layoutStrict
     , layoutStrictFollowedBy
     , layoutStrictFollowedByComments
     , layoutStrictFollowedByWithComments

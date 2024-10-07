@@ -1,7 +1,7 @@
 module Elm.Parser.Declarations exposing (declaration)
 
 import Elm.Parser.Comments as Comments
-import Elm.Parser.Expression exposing (expression)
+import Elm.Parser.Expression exposing (expressionFollowedByOptimisticLayout)
 import Elm.Parser.Layout as Layout
 import Elm.Parser.Patterns as Patterns
 import Elm.Parser.Tokens as Tokens
@@ -294,7 +294,7 @@ functionAfterDocumentation =
         )
         parameterPatternsEqual
         Layout.maybeLayout
-        expression
+        expressionFollowedByOptimisticLayout
 
 
 functionDeclarationWithoutDocumentation : Parser (WithComments (Node Declaration))
@@ -376,7 +376,7 @@ functionDeclarationWithoutDocumentation =
         )
         parameterPatternsEqual
         Layout.maybeLayout
-        expression
+        expressionFollowedByOptimisticLayout
         |> ParserFast.validate
             (\result ->
                 let

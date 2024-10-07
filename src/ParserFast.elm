@@ -6,7 +6,7 @@ module ParserFast exposing
     , integerDecimalMapWithRange, integerDecimalOrHexadecimalMapWithRange, floatOrIntegerDecimalOrHexadecimalMapWithRange
     , skipWhileWhitespaceFollowedBy, followedBySkipWhileWhitespace, nestableMultiCommentMapWithRange
     , map, validate, lazy
-    , map2, map2WithStartLocation, map2WithRange, map3, map3WithStartLocation, map3WithRange, map4, map4WithRange, map5, map5WithStartLocation, map5WithRange, map6, map6WithStartLocation, map6WithRange, map7WithRange, map8WithStartLocation, map9WithRange
+    , map2, map2WithStartLocation, map2WithRange, map3, map3WithStartLocation, map3WithRange, map4, map4WithStartLocation, map4WithRange, map5, map5WithStartLocation, map5WithRange, map6, map6WithStartLocation, map6WithRange, map7WithRange, map8WithStartLocation, map9WithRange
     , loopWhileSucceeds, loopWhileSucceedsOntoResultFromParser, loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe, loopWhileSucceedsRightToLeftStackUnsafe, loopUntil
     , orSucceed, map2OrSucceed, map2WithRangeOrSucceed, map3OrSucceed, map4OrSucceed, oneOf2, oneOf2Map, oneOf2MapWithStartRowColumnAndEndRowColumn, oneOf3, oneOf4, oneOf5, oneOf7, oneOf9
     , withIndentSetToColumn, columnIndentAndThen, validateEndColumnIndentation
@@ -82,7 +82,7 @@ With `ParserFast`, you need to either
 
 ## sequence
 
-@docs map2, map2WithStartLocation, map2WithRange, map3, map3WithStartLocation, map3WithRange, map4, map4WithRange, map5, map5WithStartLocation, map5WithRange, map6, map6WithStartLocation, map6WithRange, map7WithRange, map8WithStartLocation, map9WithRange
+@docs map2, map2WithStartLocation, map2WithRange, map3, map3WithStartLocation, map3WithRange, map4, map4WithStartLocation, map4WithRange, map5, map5WithStartLocation, map5WithRange, map6, map6WithStartLocation, map6WithRange, map7WithRange, map8WithStartLocation, map9WithRange
 
 @docs loopWhileSucceeds, loopWhileSucceedsOntoResultFromParser, loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe, loopWhileSucceedsRightToLeftStackUnsafe, loopUntil
 
@@ -550,6 +550,34 @@ map4WithRange func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parse
 
                                         Good d s4 ->
                                             Good (func { start = { row = s0.row, column = s0.col }, end = { row = s4.row, column = s4.col } } a b c d) s4
+        )
+
+
+map4WithStartLocation : (Location -> a -> b -> c -> d -> value) -> Parser a -> Parser b -> Parser c -> Parser d -> Parser value
+map4WithStartLocation func (Parser parseA) (Parser parseB) (Parser parseC) (Parser parseD) =
+    Parser
+        (\s0 ->
+            case parseA s0 of
+                Bad committed x ->
+                    Bad committed x
+
+                Good a s1 ->
+                    case parseB s1 of
+                        Bad _ x ->
+                            Bad True x
+
+                        Good b s2 ->
+                            case parseC s2 of
+                                Bad _ x ->
+                                    Bad True x
+
+                                Good c s3 ->
+                                    case parseD s3 of
+                                        Bad _ x ->
+                                            Bad True x
+
+                                        Good d s4 ->
+                                            Good (func { row = s0.row, column = s0.col } a b c d) s4
         )
 
 
@@ -2099,7 +2127,6 @@ convertIntegerDecimalOrHexadecimal offset src =
             case String.slice (offset + 1) (offset + 2) src of
                 "x" ->
                     let
-                        --_ = Debug.todo "not huh"
                         hex : { int : Int, offset : Int }
                         hex =
                             convert1OrMoreHexadecimal (offset + 2) src

@@ -35,18 +35,6 @@ subExpression =
                 "{" ->
                     recordExpressionFollowedByRecordAccess
 
-                "c" ->
-                    caseOrUnqualifiedReferenceExpression
-
-                "\\" ->
-                    lambdaExpressionFollowedByOptimisticLayout
-
-                "l" ->
-                    letOrUnqualifiedReferenceExpression
-
-                "i" ->
-                    ifOrUnqualifiedReferenceExpression
-
                 "." ->
                     recordAccessFunctionExpression
 
@@ -59,27 +47,6 @@ subExpression =
                 _ ->
                     referenceOrNumberExpression
         )
-
-
-caseOrUnqualifiedReferenceExpression : Parser (WithComments (Node Expression))
-caseOrUnqualifiedReferenceExpression =
-    ParserFast.oneOf2
-        caseExpressionFollowedByOptimisticLayout
-        unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
-
-
-letOrUnqualifiedReferenceExpression : Parser (WithComments (Node Expression))
-letOrUnqualifiedReferenceExpression =
-    ParserFast.oneOf2
-        letExpressionFollowedByOptimisticLayout
-        unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
-
-
-ifOrUnqualifiedReferenceExpression : Parser (WithComments (Node Expression))
-ifOrUnqualifiedReferenceExpression =
-    ParserFast.oneOf2
-        ifBlockExpressionFollowedByOptimisticLayout
-        unqualifiedFunctionReferenceExpressionFollowedByRecordAccess
 
 
 referenceOrNumberExpression : Parser (WithComments (Node Expression))

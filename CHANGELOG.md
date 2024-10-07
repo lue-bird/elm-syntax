@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 - Fix incorrect range for imports that have both an alias and an exposing part.
-- The parser is stricter in a few cases where code that was incorrect (according to the Elm compiler) was successfully parsed: `as` pattern placement, function application after unparenthesized if, lambda, let, negation, number, string, char, list, glsl, [case](https://github.com/stil4m/elm-syntax/issues/209)
+- The parser is stricter in a few cases where code that was incorrect (according to the Elm compiler) was successfully parsed: `as` pattern placement, function application arguments as unparenthesized if, lambda, let, case, function application after unparenthesized if, lambda, let, negation, number, string, char, list, glsl, [case](https://github.com/stil4m/elm-syntax/issues/209)
 
 ## [7.3.6] - 2024-09-11
 

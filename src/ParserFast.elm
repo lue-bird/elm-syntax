@@ -9,7 +9,7 @@ module ParserFast exposing
     , map2, map2WithStartLocation, map2WithRange, map3, map3WithStartLocation, map3WithRange, map4, map4WithRange, map5, map5WithStartLocation, map5WithRange, map6, map6WithStartLocation, map6WithRange, map7WithRange, map8WithStartLocation, map9WithRange
     , loopWhileSucceeds, loopWhileSucceedsOntoResultFromParser, loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe, loopWhileSucceedsRightToLeftStackUnsafe, loopUntil
     , orSucceed, map2OrSucceed, map2WithRangeOrSucceed, map3OrSucceed, map4OrSucceed, oneOf2, oneOf2Map, oneOf2MapWithStartRowColumnAndEndRowColumn, oneOf3, oneOf4, oneOf5, oneOf7, oneOf9
-    , withIndentSetToColumn, withIndentSetToColumnMinus, columnIndentAndThen, validateEndColumnIndentation
+    , withIndentSetToColumn, columnIndentAndThen, validateEndColumnIndentation
     , mapWithRange, columnAndThen, offsetSourceAndThen, offsetSourceAndThenOrSucceed
     , problem
     )
@@ -114,7 +114,7 @@ Once a path is chosen, it does not come back and try the others.
 
 # Indentation, Locations and source
 
-@docs withIndentSetToColumn, withIndentSetToColumnMinus, columnIndentAndThen, validateEndColumnIndentation
+@docs withIndentSetToColumn, columnIndentAndThen, validateEndColumnIndentation
 @docs mapWithRange, columnAndThen, offsetSourceAndThen, offsetSourceAndThenOrSucceed
 @docs problem
 
@@ -2738,19 +2738,6 @@ withIndentSetToColumn (Parser parse) =
     Parser
         (\s0 ->
             case parse (changeIndent s0.col s0) of
-                Good a s1 ->
-                    Good a (changeIndent s0.indent s1)
-
-                bad ->
-                    bad
-        )
-
-
-withIndentSetToColumnMinus : Int -> Parser a -> Parser a
-withIndentSetToColumnMinus columnToMoveIndentationBaseBackBy (Parser parse) =
-    Parser
-        (\s0 ->
-            case parse (changeIndent (s0.col - columnToMoveIndentationBaseBackBy) s0) of
                 Good a s1 ->
                     Good a (changeIndent s0.indent s1)
 

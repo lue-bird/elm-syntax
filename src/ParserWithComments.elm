@@ -62,14 +62,10 @@ Mind you the comments will be reversed either way
 manyWithoutReverse : Parser (WithComments a) -> Parser (WithComments (List a))
 manyWithoutReverse p =
     ParserFast.loopWhileSucceeds p
-        ( Rope.empty, [] )
-        (\pResult ( commentsSoFar, itemsSoFar ) ->
-            ( commentsSoFar |> Rope.prependTo pResult.comments
-            , pResult.syntax :: itemsSoFar
-            )
-        )
-        (\( commentsSoFar, itemsSoFar ) ->
-            { comments = commentsSoFar
-            , syntax = itemsSoFar
+        { comments = Rope.empty, syntax = [] }
+        (\pResult soFar ->
+            { comments = soFar.comments |> Rope.prependTo pResult.comments
+            , syntax = pResult.syntax :: soFar.syntax
             }
         )
+        (\result -> result)

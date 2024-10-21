@@ -31,7 +31,7 @@ unicodeIsLowerFast c =
             String.fromChar c
     in
     charCodeIsLower code
-        || (if String.toLower cString == cString ++ "" && String.toUpper cString /= cString ++ "" then
+        || (if String.toLower cString == cString && String.toUpper cString /= cString then
                 code <= 0x0344 || 0x0346 <= code && code <= 0x216F || 0x2180 <= code && code <= 0x24CF || 0x24EA <= code && code <= 0x000F0000
 
             else if code < 0xA7F9 then
@@ -76,7 +76,7 @@ unicodeIsUpperFast c =
                 cString =
                     String.fromChar c
             in
-            if String.toUpper cString == cString ++ "" && String.toLower cString /= cString ++ "" then
+            if String.toUpper cString == cString && String.toLower cString /= cString then
                 code <= 0x215F || 0x2170 <= code && code <= 0x24B5 || 0x24D0 <= code && code <= 0x000F0000
 
             else if code < 0x0001D4CF then

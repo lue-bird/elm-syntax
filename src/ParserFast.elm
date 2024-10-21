@@ -2229,7 +2229,7 @@ symbol str res =
                 newOffset =
                     s.offset + strLength
             in
-            if String.slice s.offset newOffset s.src == str ++ "" then
+            if String.slice s.offset newOffset s.src == str then
                 Good res
                     { src = s.src
                     , offset = newOffset
@@ -2259,7 +2259,7 @@ followedBySymbol str (Parser parsePrevious) =
                         newOffset =
                             s1.offset + strLength
                     in
-                    if String.slice s1.offset newOffset s1.src == str ++ "" then
+                    if String.slice s1.offset newOffset s1.src == str then
                         Good res
                             { src = s1.src
                             , offset = newOffset
@@ -2290,7 +2290,7 @@ symbolWithEndLocation str endLocationToRes =
                 newOffset =
                     s.offset + strLength
             in
-            if String.slice s.offset newOffset s.src == str ++ "" then
+            if String.slice s.offset newOffset s.src == str then
                 let
                     newCol : Int
                     newCol =
@@ -2324,7 +2324,7 @@ symbolWithRange str startAndEndLocationToRes =
                 newOffset =
                     s.offset + strLength
             in
-            if String.slice s.offset newOffset s.src == str ++ "" then
+            if String.slice s.offset newOffset s.src == str then
                 let
                     newCol : Int
                     newCol =
@@ -2361,7 +2361,7 @@ symbolFollowedBy str (Parser parseNext) =
                 newOffset =
                     s.offset + strLength
             in
-            if String.slice s.offset newOffset s.src == str ++ "" then
+            if String.slice s.offset newOffset s.src == str then
                 parseNext
                     { src = s.src
                     , offset = newOffset
@@ -2393,7 +2393,7 @@ symbolBacktrackableFollowedBy str (Parser parseNext) =
                 newOffset =
                     s.offset + strLength
             in
-            if String.slice s.offset newOffset s.src == str ++ "" then
+            if String.slice s.offset newOffset s.src == str then
                 parseNext
                     { src = s.src
                     , offset = newOffset
@@ -2446,7 +2446,7 @@ keyword kwd res =
                     s.offset + kwdLength
             in
             if
-                (String.slice s.offset newOffset s.src == kwd ++ "")
+                (String.slice s.offset newOffset s.src == kwd)
                     && not (isSubCharAlphaNumOrUnderscore newOffset s.src)
             then
                 Good res
@@ -2486,7 +2486,7 @@ keywordFollowedBy kwd (Parser parseNext) =
                     s.offset + kwdLength
             in
             if
-                (String.slice s.offset newOffset s.src == kwd ++ "")
+                (String.slice s.offset newOffset s.src == kwd)
                     && not (isSubCharAlphaNumOrUnderscore newOffset s.src)
             then
                 parseNext
@@ -2879,7 +2879,7 @@ whileAtMost3WithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollow
             in
             if
                 (String.slice (s0Offset + consumedBeforeFinalSymbolLength) (s0Offset + consumedBeforeFinalSymbolLength + mandatoryFinalSymbolLength) src
-                    == (mandatoryFinalSymbol ++ "")
+                    == mandatoryFinalSymbol
                 )
                     && whileResultIsOkay consumedBeforeFinalSymbolString
             then

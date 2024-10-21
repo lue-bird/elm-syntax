@@ -192,7 +192,7 @@ declarationWithDocumentation =
                                     (Node _ signatureName) =
                                         signature.name
                                 in
-                                implementationName == signatureName ++ ""
+                                implementationName == signatureName
 
                     _ ->
                         True
@@ -400,7 +400,7 @@ functionDeclarationWithoutDocumentation =
                                     (Node _ signatureName) =
                                         signature.name
                                 in
-                                implementationName == signatureName ++ ""
+                                implementationName == signatureName
 
                     _ ->
                         True

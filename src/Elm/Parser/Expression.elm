@@ -782,7 +782,7 @@ letFunctionFollowedByOptimisticLayout =
                                     (Node _ signatureName) =
                                         signature.name
                                 in
-                                implementationName == signatureName ++ ""
+                                implementationName == signatureName
             )
             "Expected to find the same name for declaration and signature"
 

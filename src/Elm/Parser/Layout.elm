@@ -21,7 +21,7 @@ import Rope
 
 whitespaceAndCommentsOrEmpty : Parser Comments
 whitespaceAndCommentsOrEmpty =
-    ParserFast.skipWhileWhitespaceFollowedBy
+    ParserFast.skipWhileWhitespaceBacktrackableFollowedBy
         -- whitespace can't be followed by more whitespace
         --
         -- since comments are comparatively rare

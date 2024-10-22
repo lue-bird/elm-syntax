@@ -4,7 +4,7 @@ module ParserFast exposing
     , keyword, keywordFollowedBy
     , anyChar, while, whileWithoutLinebreak, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen, whileAtMost3WithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
     , integerDecimalMapWithRange, integerDecimalOrHexadecimalMapWithRange, floatOrIntegerDecimalOrHexadecimalMapWithRange
-    , skipWhileWhitespaceFollowedBy, followedBySkipWhileWhitespace, nestableMultiCommentMapWithRange
+    , skipWhileWhitespaceBacktrackableFollowedBy, followedBySkipWhileWhitespace, nestableMultiCommentMapWithRange
     , map, validate, lazy
     , map2, map2WithStartLocation, map2WithRange, map3, map3WithStartLocation, map3WithRange, map4, map4WithStartLocation, map4WithRange, map5, map5WithStartLocation, map5WithRange, map6, map6WithStartLocation, map6WithRange, map7WithRange, map9WithRange
     , loopWhileSucceeds, loopWhileSucceedsOntoResultFromParser, loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe, loopWhileSucceedsRightToLeftStackUnsafe, loopUntil
@@ -72,7 +72,7 @@ With `ParserFast`, you need to either
 
 # Whitespace primitives
 
-@docs skipWhileWhitespaceFollowedBy, followedBySkipWhileWhitespace, nestableMultiCommentMapWithRange
+@docs skipWhileWhitespaceBacktrackableFollowedBy, followedBySkipWhileWhitespace, nestableMultiCommentMapWithRange
 
 
 # Flow
@@ -2664,12 +2664,11 @@ followedBySkipWhileWhitespace (Parser parseBefore) =
 
 {-| Match zero or more \\n, \\r and space characters, then proceed with the given parser
 -}
-skipWhileWhitespaceFollowedBy : Parser next -> Parser next
-skipWhileWhitespaceFollowedBy (Parser parseNext) =
+skipWhileWhitespaceBacktrackableFollowedBy : Parser next -> Parser next
+skipWhileWhitespaceBacktrackableFollowedBy (Parser parseNext) =
     Parser
         (\s0 ->
             parseNext (skipWhileWhitespaceHelp s0.offset s0.row s0.col s0.src s0.indent)
-                |> pStepCommit
         )
 
 

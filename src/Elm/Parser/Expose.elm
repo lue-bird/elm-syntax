@@ -90,31 +90,34 @@ typeExpose : Parser (WithComments (Node TopLevelExpose))
 typeExpose =
     ParserFast.map3
         (\(Node typeNameRange typeName) commentsBeforeMaybeOpen maybeOpen ->
-            { comments = commentsBeforeMaybeOpen |> Rope.prependTo maybeOpen.comments
-            , syntax =
-                case maybeOpen.syntax of
-                    Nothing ->
+            case maybeOpen of
+                Nothing ->
+                    { comments = commentsBeforeMaybeOpen
+                    , syntax =
                         Node typeNameRange (TypeOrAliasExpose typeName)
+                    }
 
-                    Just openRange ->
+                Just open ->
+                    { comments = commentsBeforeMaybeOpen |> Rope.prependTo open.comments
+                    , syntax =
                         Node
                             { start = typeNameRange.start
-                            , end = openRange.end
+                            , end = open.syntax.end
                             }
-                            (TypeExpose { name = typeName, open = maybeOpen.syntax })
-            }
+                            (TypeExpose { name = typeName, open = Just open.syntax })
+                    }
         )
         Tokens.typeNameNode
         Layout.optimisticLayout
         (ParserFast.map2WithRangeOrSucceed
             (\range left right ->
-                { comments = left |> Rope.prependTo right, syntax = Just range }
+                Just { comments = left |> Rope.prependTo right, syntax = range }
             )
             (ParserFast.symbolFollowedBy "(" Layout.maybeLayout)
             (ParserFast.symbolFollowedBy ".." Layout.maybeLayout
                 |> ParserFast.followedBySymbol ")"
             )
-            { comments = Rope.empty, syntax = Nothing }
+            Nothing
         )
 
 

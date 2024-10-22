@@ -183,35 +183,37 @@ recordTypeAnnotation : Parser (WithComments (Node TypeAnnotation))
 recordTypeAnnotation =
     ParserFast.map2WithRange
         (\range commentsBefore afterCurly ->
-            { comments =
-                commentsBefore
-                    |> Rope.prependTo afterCurly.comments
-            , syntax =
-                case afterCurly.syntax of
-                    Nothing ->
+            case afterCurly of
+                Nothing ->
+                    { comments = commentsBefore
+                    , syntax =
                         Node range typeAnnotationRecordEmpty
+                    }
 
-                    Just afterCurlyResult ->
-                        Node range afterCurlyResult
-            }
+                Just afterCurlyResult ->
+                    { comments =
+                        commentsBefore
+                            |> Rope.prependTo afterCurlyResult.comments
+                    , syntax =
+                        Node range afterCurlyResult.syntax
+                    }
         )
         (ParserFast.symbolFollowedBy "{" Layout.maybeLayout)
         (ParserFast.oneOf2
             (ParserFast.map3
                 (\firstNameNode commentsAfterFirstName afterFirstName ->
-                    { comments =
-                        commentsAfterFirstName
-                            |> Rope.prependTo afterFirstName.comments
-                    , syntax =
-                        Just
-                            (case afterFirstName.syntax of
+                    Just
+                        { comments =
+                            commentsAfterFirstName
+                                |> Rope.prependTo afterFirstName.comments
+                        , syntax =
+                            case afterFirstName.syntax of
                                 RecordExtensionExpressionAfterName fields ->
                                     TypeAnnotation.GenericRecord firstNameNode fields
 
                                 FieldsAfterName fieldsAfterName ->
                                     TypeAnnotation.Record (Node.combine Tuple.pair firstNameNode fieldsAfterName.firstFieldValue :: fieldsAfterName.tailFields)
-                            )
-                    }
+                        }
                 )
                 Tokens.functionNameNode
                 Layout.maybeLayout
@@ -272,7 +274,7 @@ recordTypeAnnotation =
                 )
                 |> ParserFast.followedBySymbol "}"
             )
-            (ParserFast.symbol "}" { comments = Rope.empty, syntax = Nothing })
+            (ParserFast.symbol "}" Nothing)
         )
 
 

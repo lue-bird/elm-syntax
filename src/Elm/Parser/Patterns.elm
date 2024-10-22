@@ -14,17 +14,17 @@ pattern : Parser (WithComments (Node Pattern))
 pattern =
     ParserFast.map2
         (\leftMaybeConsed maybeAsExtension ->
-            { comments =
-                leftMaybeConsed.comments
-                    |> Rope.prependTo maybeAsExtension.comments
-            , syntax =
-                case maybeAsExtension.syntax of
-                    Nothing ->
-                        leftMaybeConsed.syntax
+            case maybeAsExtension of
+                Nothing ->
+                    leftMaybeConsed
 
-                    Just anotherName ->
-                        Node.combine Pattern.AsPattern leftMaybeConsed.syntax anotherName
-            }
+                Just asExtension ->
+                    { comments =
+                        leftMaybeConsed.comments
+                            |> Rope.prependTo asExtension.comments
+                    , syntax =
+                        Node.combine Pattern.AsPattern leftMaybeConsed.syntax asExtension.syntax
+                    }
         )
         (ParserFast.loopWhileSucceedsOntoResultFromParserRightToLeftStackUnsafe
             (ParserFast.map2
@@ -62,15 +62,16 @@ pattern =
             (ParserFast.keywordFollowedBy "as"
                 (ParserFast.map2
                     (\commentsAfterAs name ->
-                        { comments = commentsAfterAs
-                        , syntax = Just name
-                        }
+                        Just
+                            { comments = commentsAfterAs
+                            , syntax = name
+                            }
                     )
                     Layout.maybeLayout
                     Tokens.functionNameNode
                 )
             )
-            { comments = Rope.empty, syntax = Nothing }
+            Nothing
         )
 
 

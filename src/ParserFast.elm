@@ -2655,12 +2655,7 @@ followedBySkipWhileWhitespace (Parser parseBefore) =
         (\s0 ->
             case parseBefore s0 of
                 Good res s1 ->
-                    let
-                        s2 : State
-                        s2 =
-                            skipWhileWhitespaceHelp s1.offset s1.row s1.col s1.src s1.indent
-                    in
-                    Good res s2
+                    Good res (skipWhileWhitespaceHelp s1.offset s1.row s1.col s1.src s1.indent)
 
                 bad ->
                     bad
@@ -2673,12 +2668,8 @@ skipWhileWhitespaceFollowedBy : Parser next -> Parser next
 skipWhileWhitespaceFollowedBy (Parser parseNext) =
     Parser
         (\s0 ->
-            let
-                s1 : State
-                s1 =
-                    skipWhileWhitespaceHelp s0.offset s0.row s0.col s0.src s0.indent
-            in
-            parseNext s1 |> pStepCommit
+            parseNext (skipWhileWhitespaceHelp s0.offset s0.row s0.col s0.src s0.indent)
+                |> pStepCommit
         )
 
 

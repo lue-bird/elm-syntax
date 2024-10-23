@@ -2,7 +2,7 @@ module ParserFast exposing
     ( Parser, run
     , symbol, symbolWithEndLocation, symbolWithRange, symbolFollowedBy, symbolBacktrackableFollowedBy, followedBySymbol
     , keyword, keywordFollowedBy
-    , anyChar, while, whileWithoutLinebreak, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen, whileAtMost3WithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
+    , anyChar, while, whileMapWithRange, ifFollowedByWhileWithoutLinebreak, ifFollowedByWhileMapWithoutLinebreak, ifFollowedByWhileMapWithRangeWithoutLinebreak, ifFollowedByWhileValidateWithoutLinebreak, ifFollowedByWhileValidateMapWithRangeWithoutLinebreak, whileAtMost3WithoutLinebreakAnd2PartUtf16ToResultAndThen, whileAtMost3WithoutLinebreakAnd2PartUtf16ValidateMapWithRangeBacktrackableFollowedBySymbol
     , integerDecimalMapWithRange, integerDecimalOrHexadecimalMapWithRange, floatOrIntegerDecimalOrHexadecimalMapWithRange
     , skipWhileWhitespaceBacktrackableFollowedBy, followedBySkipWhileWhitespace, nestableMultiCommentMapWithRange
     , map, validate, lazy
@@ -12,6 +12,7 @@ module ParserFast exposing
     , withIndentSetToColumn, columnIndentAndThen, validateEndColumnIndentation
     , mapWithRange, columnAndThen, offsetSourceAndThen, offsetSourceAndThenOrSucceed
     , problem
+    , whileAtLeast1WithoutLinebreak
     )
 
 {-|
@@ -3081,8 +3082,8 @@ while isGood =
         )
 
 
-whileWithoutLinebreak : (Char -> Bool) -> Parser String
-whileWithoutLinebreak isGood =
+whileAtLeast1WithoutLinebreak : (Char -> Bool) -> Parser String
+whileAtLeast1WithoutLinebreak isGood =
     Parser
         (\s0 ->
             let
@@ -3090,9 +3091,13 @@ whileWithoutLinebreak isGood =
                 s1 =
                     skipWhileWithoutLinebreakHelp isGood s0.offset s0.row s0.col s0.src s0.indent
             in
-            Good
-                (String.slice s0.offset s1.offset s0.src)
-                s1
+            if s1.offset - s0.offset == 0 then
+                Bad False (ExpectingCharSatisfyingPredicate s0.row s0.col)
+
+            else
+                Good
+                    (String.slice s0.offset s1.offset s0.src)
+                    s1
         )
 
 

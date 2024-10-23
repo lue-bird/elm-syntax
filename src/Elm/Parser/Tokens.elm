@@ -242,8 +242,8 @@ singleQuotedStringLiteralAfterDoubleQuote : ParserFast.Parser String
 singleQuotedStringLiteralAfterDoubleQuote =
     ParserFast.loopUntil (ParserFast.symbol "\"" ())
         (ParserFast.oneOf2
+            (ParserFast.whileAtLeast1WithoutLinebreak (\c -> c /= '"' && c /= '\\' && not (Char.Extra.isUtf16Surrogate c)))
             (ParserFast.symbolFollowedBy "\\" (escapedCharValueMap String.fromChar))
-            (ParserFast.whileWithoutLinebreak (\c -> c /= '"' && c /= '\\' && not (Char.Extra.isUtf16Surrogate c)))
         )
         ""
         (\extension soFar ->
